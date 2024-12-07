@@ -4,5 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.94"
 clap = { version = "4.5.23", features = ["derive"] }
+quinn = "0.11.6"
+rustls = "0.23.19"
+rustls-pemfile = "2.2.0"
 tokio = { version = "1", features = ["full"] }

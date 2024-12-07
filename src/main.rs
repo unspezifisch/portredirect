@@ -1,7 +1,10 @@
 use clap::Parser;
+use quinn::{Connection, RecvStream, SendStream};
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+
+mod quic;
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -21,6 +24,10 @@ struct Args {
     /// Remote port to forward traffic to.
     #[clap(long)]
     remote_port: u16,
+
+    /// Remote port to forward traffic to.
+    #[clap(long)]
+    psk: Option<String>,
 }
 
 /// Data structure to hold connection statistics.
@@ -34,9 +41,7 @@ async fn main() -> io::Result<()> {
     let args = Args::parse();
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
     let remote_addr = format!("{}:{}", args.remote_host, args.remote_port);
-
-    let listener = TcpListener::bind(local_addr).await?;
-    println!("Listening on {}", listener.local_addr()?);
+    let do_tcp_redirect = args.psk.is_none();
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -64,6 +69,9 @@ async fn main() -> io::Result<()> {
         }
     });
 
+    let listener = TcpListener::bind(local_addr).await?;
+    println!("Listening on {}", listener.local_addr()?);
+
     // Accept incoming connections.
     loop {
         let (local_socket, _) = match listener.accept().await {
@@ -73,15 +81,29 @@ async fn main() -> io::Result<()> {
                 continue;
             }
         };
-        let remote_addr = remote_addr.clone();
-        let stats = stats.clone();
 
-        tokio::spawn(async move {
-            // Handle the connection.
-            if let Err(e) = handle_connection(local_socket, remote_addr, stats.clone()).await {
-                eprintln!("Connection error: {}", e);
-            }
-        });
+        if do_tcp_redirect {
+            let remote_addr = remote_addr.clone();
+            let stats = stats.clone();
+            println!("New TCP connection from: {}", remote_addr);
+
+            tokio::spawn(async move {
+                // Handle the connection.
+                if let Err(e) =
+                    handle_tcp_connection_redirect(local_socket, remote_addr, stats.clone()).await
+                {
+                    eprintln!("Connection error: {}", e);
+                }
+            });
+        } else {
+            let quic_connection = quic_connection.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
+                    eprintln!("Error handling TCP connection: {:?}", e);
+                }
+            });
+        }
     }
 }
 
@@ -91,7 +113,7 @@ async fn main() -> io::Result<()> {
 /// * `local_socket` - The accepted local socket.
 /// * `remote_addr` - The address of the remote server.
 /// * `stats` - Shared statistics for connection tracking.
-async fn handle_connection(
+async fn handle_tcp_connection_redirect(
     local_socket: TcpStream,
     remote_addr: String,
     stats: Arc<Mutex<ConnectionStats>>,
@@ -150,5 +172,44 @@ async fn handle_connection(
         stats.connection_count -= 1;
     }
 
+    Ok(())
+}
+
+async fn handle_tcp_to_quic(
+    mut tcp_stream: tokio::net::TcpStream,
+    quic_connection: Connection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Open a new QUIC stream
+    let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
+    println!("Opened QUIC stream for TCP forwarding");
+
+    // Forward TCP -> QUIC
+    let tcp_to_quic = tokio::spawn(async move {
+        let mut buf = [0; 1024];
+        while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            quic_send.write_all(&buf[..bytes_read]).await?;
+        }
+        quic_send.finish().await?; // Signal end of stream
+        Ok::<(), Box<dyn std::error::Error>>(())
+    });
+
+    // Forward QUIC -> TCP
+    let quic_to_tcp = tokio::spawn(async move {
+        let mut buf = [0; 1024];
+        while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            tcp_stream.write_all(&buf[..bytes_read]).await?;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    });
+
+    // Wait for both directions to complete
+    tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
+    println!("Closed QUIC stream for TCP connection");
     Ok(())
 }

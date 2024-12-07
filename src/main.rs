@@ -48,13 +48,19 @@ async fn main() -> io::Result<()> {
     let stats_clone = stats.clone();
     tokio::spawn(async move {
         use tokio::time::{sleep, Duration};
+        let mut printed_once = false;
+        let mut previous_total_bytes = 0u64;
         loop {
             sleep(Duration::from_secs(1)).await;
             let stats = stats_clone.lock().unwrap();
-            println!(
-                "\rActive connections: {}\tTotal data: {} bytes",
-                stats.connection_count, stats.total_bytes
-            );
+            if stats.total_bytes != previous_total_bytes || !printed_once {
+                println!(
+                    "\rActive connections: {}\tTotal data: {} bytes",
+                    stats.connection_count, stats.total_bytes
+                );
+                previous_total_bytes = stats.total_bytes;
+                printed_once = true;
+            }
         }
     });
 
@@ -104,10 +110,9 @@ async fn handle_connection(
 ) -> io::Result<()> {
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
-   // Split the sockets into read and write halves
-   let (mut local_read, mut local_write) = local_socket.into_split();
-   let (mut remote_read, mut remote_write) = remote_socket.into_split();
-
+    // Split the sockets into read and write halves
+    let (mut local_read, mut local_write) = local_socket.into_split();
+    let (mut remote_read, mut remote_write) = remote_socket.into_split();
 
     let stats_clone = stats.clone();
 

@@ -77,21 +77,9 @@ async fn main() -> io::Result<()> {
         let stats = stats.clone();
 
         tokio::spawn(async move {
-            // Increment connection count.
-            {
-                let mut stats = stats.lock().unwrap();
-                stats.connection_count += 1;
-            }
-
             // Handle the connection.
             if let Err(e) = handle_connection(local_socket, remote_addr, stats.clone()).await {
                 eprintln!("Connection error: {}", e);
-            }
-
-            // Decrement connection count.
-            {
-                let mut stats = stats.lock().unwrap();
-                stats.connection_count -= 1;
             }
         });
     }
@@ -108,6 +96,12 @@ async fn handle_connection(
     remote_addr: String,
     stats: Arc<Mutex<ConnectionStats>>,
 ) -> io::Result<()> {
+    // Increment connection count.
+    {
+        let mut stats = stats.lock().unwrap();
+        stats.connection_count += 1;
+    }
+
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
     // Split the sockets into read and write halves
@@ -131,6 +125,7 @@ async fn handle_connection(
         Ok::<(), io::Error>(())
     });
 
+    let stats_clone = stats.clone();
     // Forward data from remote to local.
     let remote_to_local_task = tokio::spawn(async move {
         let mut buffer = [0u8; 1024];
@@ -140,7 +135,7 @@ async fn handle_connection(
             }
             local_write.write_all(&buffer[..bytes_read]).await?;
 
-            let mut stats = stats.lock().unwrap();
+            let mut stats = stats_clone.lock().unwrap();
             stats.total_bytes += bytes_read as u64;
         }
         Ok::<(), io::Error>(())
@@ -148,6 +143,12 @@ async fn handle_connection(
 
     // Wait for both tasks to complete.
     let _ = tokio::try_join!(local_to_remote_task, remote_to_local_task)?;
+
+    // Decrement connection count.
+    {
+        let mut stats = stats.lock().unwrap();
+        stats.connection_count -= 1;
+    }
 
     Ok(())
 }

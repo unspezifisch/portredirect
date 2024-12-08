@@ -128,6 +128,7 @@ pub fn try_load_quic_cert(
 ///
 ///     let cert_path = cert_temp.path().to_path_buf();
 ///     let key_path = key_temp.path().to_path_buf();
+///     println!("Test files: cert {:?}, key {:?}", cert_path, key_path);
 ///
 ///     // Generate the self-signed certificate and private key.
 ///     generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone())?;
@@ -151,9 +152,11 @@ pub fn generate_quic_cert(
     println!("generating self-signed certificate");
     let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()])?;
     let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-    let cert = cert.cert.into();
-    fs::write(&cert_path, &cert).context("failed to write certificate")?;
+    let cert_der = cert.cert.der();
+    fs::write(&cert_path, &cert_der).context("failed to write certificate")?;
     fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
+    
+    let cert = vec![cert_der.clone().into_owned()];
     Ok((cert, key.into()))
 }
 

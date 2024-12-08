@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.94"
 clap = { version = "4.5.23", features = ["derive"] }
 quinn = "0.11.6"
-rcgen = { version = "0.13.1", features = ["pem"] }
+rcgen = { version = "0.13.1", features = ["pem", "crypto"] }
 rustls = "0.23.19"
 rustls-pemfile = "2.2.0"
 tokio = { version = "1", features = ["full"] }

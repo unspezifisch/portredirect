@@ -148,26 +148,28 @@ pub fn try_load_quic_cert(
 ///         key_path
 ///     );
 ///
-///     // Attempt to load the generated certificate and key.
-///     //let result = try_load_quic_cert(key_path.clone(), cert_path.clone())?;
-///
-///     // Validate that the loading succeeded.
-///     //assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
-///
 ///     // Validate the written certificate and key.
 ///     let cert_pem = fs::read_to_string(&cert_path).context("failed to read certificate")?;
 ///     let key_pem = fs::read_to_string(&key_path).context("failed to read private key")?;
 ///
 ///     // Parse the key pair and ensure it matches the certificate.
 ///     let parsed_key_pair = KeyPair::from_pem(&key_pem).context("failed to parse private key")?;
-///     //let parsed_cert = rcgen::Certificate::from .context("failed to parse certificate")?;
+///     //let parsed_cert = rcgen::Certificate::from.  TODO  .context("failed to parse certificate")?;
 ///     ensure!(
 ///         parsed_key_pair.compatible_algs().next().is_some(),
 ///         "The public key in the certificate does not match the private key"
 ///     );
 ///
-///     println!("Certificate and key validation succeeded!");
+///     println!("Certificate and key generated! Trying to load them...");
 ///
+///     // Attempt to load the generated certificate and key.
+///     let result = try_load_quic_cert(key_path.clone(), cert_path.clone())?;
+///
+///     // Validate that the loading succeeded.
+///     assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
+///
+///     println!("Certificate and key loading succeeded!");
+/// 
 ///     Ok(())
 /// }
 /// ```
@@ -188,7 +190,7 @@ pub fn generate_quic_cert(
 
 #[tokio::main]
 pub async fn setup_quic(config: QuicConfig) -> Result<()> {
-    let (certs, key) = match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
+    let (cert_chain, key_der) = match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
         Ok(ret) => ret,
         Err(_) => {
             generate_quic_cert(config.cert_hostname, config.key_file.clone(), config.cert_file.clone())
@@ -199,7 +201,7 @@ pub async fn setup_quic(config: QuicConfig) -> Result<()> {
 
     let server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(certs, key)?;
+        .with_single_cert(cert_chain, key_der)?;
 
     let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));

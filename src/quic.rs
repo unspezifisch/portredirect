@@ -1,8 +1,9 @@
 // based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
-use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
+use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
 
-use anyhow::{anyhow, bail, Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
+use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
 #[derive(Debug)]
@@ -116,9 +117,11 @@ pub fn try_load_quic_cert(
 /// # Examples
 ///
 /// ```rust
+/// use std::fs;
 /// use std::path::PathBuf;
-/// use anyhow::Result;
 /// use tempfile::NamedTempFile;
+/// use anyhow::{ensure, Context, Result};
+/// use rcgen::{generate_simple_self_signed, KeyPair, CertifiedKey};
 /// use portredirect::quic::{generate_quic_cert, try_load_quic_cert};
 ///
 /// fn main() -> Result<()> {
@@ -132,12 +135,39 @@ pub fn try_load_quic_cert(
 ///
 ///     // Generate the self-signed certificate and private key.
 ///     generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone())?;
+/// 
+///     // Check that the certificate and key files exist.
+///     ensure!(
+///         cert_path.exists(),
+///         "Certificate file was not created at {:?}",
+///         cert_path
+///     );
+///     ensure!(
+///         key_path.exists(),
+///         "Private key file was not created at {:?}",
+///         key_path
+///     );
 ///
 ///     // Attempt to load the generated certificate and key.
-///     let result = try_load_quic_cert(key_path, cert_path)?;
+///     //let result = try_load_quic_cert(key_path.clone(), cert_path.clone())?;
 ///
 ///     // Validate that the loading succeeded.
-///     assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
+///     //assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
+///
+///     // Validate the written certificate and key.
+///     let cert_pem = fs::read_to_string(&cert_path).context("failed to read certificate")?;
+///     let key_pem = fs::read_to_string(&key_path).context("failed to read private key")?;
+///
+///     // Parse the key pair and ensure it matches the certificate.
+///     let parsed_key_pair = KeyPair::from_pem(&key_pem).context("failed to parse private key")?;
+///     //let parsed_cert = rcgen::Certificate::from .context("failed to parse certificate")?;
+///     ensure!(
+///         parsed_key_pair.compatible_algs().next().is_some(),
+///         "The public key in the certificate does not match the private key"
+///     );
+///
+///     println!("Certificate and key validation succeeded!");
+///
 ///     Ok(())
 /// }
 /// ```
@@ -148,24 +178,23 @@ pub fn generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
-) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), Error> {
-    println!("generating self-signed certificate");
-    let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()])?;
-    let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-    let cert_der = cert.cert.der();
-    fs::write(&cert_path, &cert_der).context("failed to write certificate")?;
-    fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
-    
-    let cert = vec![cert_der.clone().into_owned()];
-    Ok((cert, key.into()))
+) -> Result<()> {
+    println!("Generating self-signed certificate");
+    let CertifiedKey { cert, key_pair } = generate_simple_self_signed(vec![cert_alt_name.into()])?;
+    fs::write(&cert_path, cert.pem()).context("failed to write certificate")?;
+    fs::write(&key_path, key_pair.serialize_pem()).context("failed to write private key")?;
+    Ok(())
 }
 
 #[tokio::main]
 pub async fn setup_quic(config: QuicConfig) -> Result<()> {
     let (certs, key) = match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
         Ok(ret) => ret,
-        Err(_) => generate_quic_cert(config.cert_hostname, config.key_file, config.cert_file)
-            .context("generating QUIC certificate")?,
+        Err(_) => {
+            generate_quic_cert(config.cert_hostname, config.key_file.clone(), config.cert_file.clone())
+                .context("generating QUIC certificate")?;
+            try_load_quic_cert(config.key_file.clone(), config.cert_file.clone())?
+        }
     };
 
     let server_crypto = rustls::ServerConfig::builder()

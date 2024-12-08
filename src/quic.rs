@@ -1,6 +1,10 @@
-// from https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
+// based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
 use std::{
-    ascii, fs, io, net::SocketAddr, path::{self, Path, PathBuf}, str, sync::Arc
+    ascii, fs, io,
+    net::SocketAddr,
+    path::PathBuf,
+    str,
+    sync::Arc,
 };
 
 use anyhow::{anyhow, bail, Context, Error, Result};
@@ -8,7 +12,7 @@ use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
 #[derive(Debug)]
-struct QuicConfig {
+pub struct QuicConfig {
     cert_hostname: String,
     cert_file: PathBuf,
     key_file: PathBuf,
@@ -44,19 +48,26 @@ struct QuicConfig {
 /// ```rust
 /// use std::path::PathBuf;
 /// use anyhow::Result;
+/// use portredirect::quic::try_load_quic_cert;
 ///
 /// fn main() -> Result<()> {
-///     let key_path = PathBuf::from("TEST-key.pem");
-///     let cert_path = PathBuf::from("TEST-cert.pem");
+///     let key_path = PathBuf::from("TEST-key-NONEXISTENT.pem");
+///     let cert_path = PathBuf::from("TEST-cert-NONEXISTENT.pem");
 ///
-///     let (certs, key) = try_load_quic_cert(key_path, cert_path)?;
-///     // Use certs and key...
+///     let result = try_load_quic_cert(key_path, cert_path);
+///
+///     // Assert that an error is returned
+///     assert!(result.is_err(), "Expected an error for nonexistent files");
+///
 ///     Ok(())
 /// }
 /// ```
 ///
 /// Note: Ensure that the file paths provided are accessible and have the correct permissions.
-fn try_load_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+pub fn try_load_quic_cert(
+    key_path: PathBuf,
+    cert_path: PathBuf,
+) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     let key = fs::read(key_path.clone()).context("failed to read private key")?;
     let key = if key_path.extension().is_some_and(|x| x == "der") {
         PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
@@ -78,7 +89,11 @@ fn try_load_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<Cert
     Ok((cert_chain, key))
 }
 
-fn generate_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), Error> {
+pub fn generate_quic_cert(
+    cert_alt_name: String,
+    key_path: PathBuf,
+    cert_path: PathBuf,
+) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), Error> {
     let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
         Ok((cert, key)) => (
             CertificateDer::from(cert),
@@ -86,12 +101,11 @@ fn generate_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<Cert
         ),
         Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
             println!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()]).unwrap();
             let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
             let cert = cert.cert.into();
             fs::write(&cert_path, &cert).context("failed to write certificate")?;
-            fs::write(&key_path, key.secret_pkcs8_der())
-                .context("failed to write private key")?;
+            fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
             (cert, key.into())
         }
         Err(e) => {
@@ -103,13 +117,14 @@ fn generate_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<Cert
 }
 
 #[tokio::main]
-async fn setup_quic(config: QuicConfig) -> Result<()> {
-    let (certs, key) = match try_load_quic_cert(config.key_file, config.cert_file) {
+pub async fn setup_quic(config: QuicConfig) -> Result<()> {
+    let (certs, key) = match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
         Ok(ret) => ret,
-        Err(_) => generate_quic_cert(config.key_file, config.cert_file).context("generating QUIC certificate")?,
+        Err(_) => generate_quic_cert(config.cert_hostname, config.key_file, config.cert_file)
+            .context("generating QUIC certificate")?,
     };
 
-    let mut server_crypto = rustls::ServerConfig::builder()
+    let server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
 
@@ -164,13 +179,11 @@ async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
                 Ok(s) => s,
             };
             let fut = handle_request_quic(stream);
-            tokio::spawn(
-                async move {
-                    if let Err(e) = fut.await {
-                        eprintln!("failed: {reason}", reason = e.to_string());
-                    }
+            tokio::spawn(async move {
+                if let Err(e) = fut.await {
+                    eprintln!("failed: {reason}", reason = e.to_string());
                 }
-            );
+            });
         }
     }
     .await?;

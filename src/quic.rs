@@ -18,8 +18,46 @@ struct QuicConfig {
     connection_limit: Option<usize>,
 }
 
+/// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
+///
+/// This function reads a private key and certificate chain from the provided file paths
+/// and attempts to parse them into the required QUIC-compatible formats. It supports
+/// both DER-encoded and PEM-encoded files.
+///
+/// # Arguments
+///
+/// * `key_path` - A `PathBuf` specifying the location of the private key file.
+/// * `cert_path` - A `PathBuf` specifying the location of the certificate chain file.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a tuple:
+/// * `Vec<CertificateDer<'static>>` - The parsed certificate chain as DER-encoded certificates.
+/// * `PrivateKeyDer<'static>` - The parsed private key in a QUIC-compatible format.
+///
+/// On success, the tuple contains the certificate chain and private key. On failure,
+/// it returns an `anyhow::Error` describing the issue encountered during file
+/// reading or parsing.
+///
+/// # Examples
+///
+/// ```rust
+/// use std::path::PathBuf;
+/// use anyhow::Result;
+///
+/// fn main() -> Result<()> {
+///     let key_path = PathBuf::from("TEST-key.pem");
+///     let cert_path = PathBuf::from("TEST-cert.pem");
+///
+///     let (certs, key) = try_load_quic_cert(key_path, cert_path)?;
+///     // Use certs and key...
+///     Ok(())
+/// }
+/// ```
+///
+/// Note: Ensure that the file paths provided are accessible and have the correct permissions.
 fn try_load_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
-    let key = fs::read(key_path).context("failed to read private key")?;
+    let key = fs::read(key_path.clone()).context("failed to read private key")?;
     let key = if key_path.extension().is_some_and(|x| x == "der") {
         PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
     } else {
@@ -27,7 +65,8 @@ fn try_load_quic_cert(key_path: PathBuf, cert_path: PathBuf) -> Result<(Vec<Cert
             .context("malformed PKCS #1 private key")?
             .ok_or_else(|| anyhow::Error::msg("no private keys found"))?
     };
-    let cert_chain = fs::read(cert_path).context("failed to read certificate chain")?;
+
+    let cert_chain = fs::read(cert_path.clone()).context("failed to read certificate chain")?;
     let cert_chain = if cert_path.extension().is_some_and(|x| x == "der") {
         vec![CertificateDer::from(cert_chain)]
     } else {

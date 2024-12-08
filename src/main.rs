@@ -25,7 +25,7 @@ struct Args {
     #[clap(long)]
     remote_port: u16,
 
-    /// Remote port to forward traffic to.
+    /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
     psk: Option<String>,
 }

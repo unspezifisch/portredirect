@@ -1,11 +1,5 @@
 // based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
-use std::{
-    ascii, fs, io,
-    net::SocketAddr,
-    path::PathBuf,
-    str,
-    sync::Arc,
-};
+use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
 
 use anyhow::{anyhow, bail, Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
@@ -68,19 +62,25 @@ pub fn try_load_quic_cert(
     key_path: PathBuf,
     cert_path: PathBuf,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+    // Load private key
     let key = fs::read(key_path.clone()).context("failed to read private key")?;
     let key = if key_path.extension().is_some_and(|x| x == "der") {
+        // DER format
         PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
     } else {
+        // PEM format
         rustls_pemfile::private_key(&mut &*key)
             .context("malformed PKCS #1 private key")?
             .ok_or_else(|| anyhow::Error::msg("no private keys found"))?
     };
 
+    // Load cert chain
     let cert_chain = fs::read(cert_path.clone()).context("failed to read certificate chain")?;
     let cert_chain = if cert_path.extension().is_some_and(|x| x == "der") {
+        // DER format
         vec![CertificateDer::from(cert_chain)]
     } else {
+        // PEM format
         rustls_pemfile::certs(&mut &*cert_chain)
             .collect::<Result<_, _>>()
             .context("invalid PEM-encoded certificate")?
@@ -89,31 +89,72 @@ pub fn try_load_quic_cert(
     Ok((cert_chain, key))
 }
 
+/// Generates a self-signed certificate and private key, or loads existing ones if they exist.
+///
+/// This function checks for the presence of the certificate and private key at the specified paths.
+/// If either is missing, it generates a self-signed certificate using the provided alternative
+/// name for the certificate (e.g., a domain name or IP address). The generated files are saved
+/// to the specified paths. The function then loads the certificate and private key into
+/// QUIC-compatible formats.
+///
+/// # Arguments
+///
+/// * `cert_alt_name` - A `String` specifying the subject alternative name for the self-signed certificate.
+/// * `key_path` - A `PathBuf` specifying the location to save or load the private key.
+/// * `cert_path` - A `PathBuf` specifying the location to save or load the certificate.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a tuple:
+/// * `Vec<CertificateDer<'static>>` - The parsed certificate chain as DER-encoded certificates.
+/// * `PrivateKeyDer<'static>` - The parsed private key in a QUIC-compatible format.
+///
+/// On success, the tuple contains the certificate chain and private key. On failure,
+/// it returns an `anyhow::Error` describing the issue encountered during file reading,
+/// writing, or parsing.
+///
+/// # Examples
+///
+/// ```rust
+/// use std::path::PathBuf;
+/// use anyhow::Result;
+/// use tempfile::NamedTempFile;
+/// use portredirect::quic::{generate_quic_cert, try_load_quic_cert};
+///
+/// fn main() -> Result<()> {
+///     // Create temporary file paths for the certificate and key.
+///     let cert_temp = NamedTempFile::new()?;
+///     let key_temp = NamedTempFile::new()?;
+///
+///     let cert_path = cert_temp.path().to_path_buf();
+///     let key_path = key_temp.path().to_path_buf();
+///
+///     // Generate the self-signed certificate and private key.
+///     generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone())?;
+///
+///     // Attempt to load the generated certificate and key.
+///     let result = try_load_quic_cert(key_path, cert_path)?;
+///
+///     // Validate that the loading succeeded.
+///     assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
+///     Ok(())
+/// }
+/// ```
+///
+/// Note: This function is suitable for development and testing purposes. For production,
+/// use a trusted certificate authority to issue certificates.
 pub fn generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), Error> {
-    let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
-        Ok((cert, key)) => (
-            CertificateDer::from(cert),
-            PrivateKeyDer::try_from(key).map_err(anyhow::Error::msg)?,
-        ),
-        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-            println!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()]).unwrap();
-            let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-            let cert = cert.cert.into();
-            fs::write(&cert_path, &cert).context("failed to write certificate")?;
-            fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
-            (cert, key.into())
-        }
-        Err(e) => {
-            bail!("failed to read certificate: {}", e);
-        }
-    };
-
-    Ok((vec![cert], key))
+    println!("generating self-signed certificate");
+    let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()])?;
+    let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+    let cert = cert.cert.into();
+    fs::write(&cert_path, &cert).context("failed to write certificate")?;
+    fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
+    Ok((cert, key.into()))
 }
 
 #[tokio::main]

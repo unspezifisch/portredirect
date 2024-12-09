@@ -1,7 +1,6 @@
 // based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
 use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
-
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -154,7 +153,6 @@ pub fn try_load_quic_cert(
 ///
 ///     // Parse the key pair and ensure it matches the certificate.
 ///     let parsed_key_pair = KeyPair::from_pem(&key_pem).context("failed to parse private key")?;
-///     //let parsed_cert = rcgen::Certificate::from.  TODO  .context("failed to parse certificate")?;
 ///     ensure!(
 ///         parsed_key_pair.compatible_algs().next().is_some(),
 ///         "The public key in the certificate does not match the private key"

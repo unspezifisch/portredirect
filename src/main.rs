@@ -1,5 +1,6 @@
 use clap::Parser;
-use quinn::{Connection, RecvStream, SendStream};
+use portredirect::quic::setup_quic;
+use quinn::Connection;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -42,6 +43,7 @@ async fn main() -> io::Result<()> {
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
     let remote_addr = format!("{}:{}", args.remote_host, args.remote_port);
     let do_tcp_redirect = args.psk.is_none();
+    let do_quic = !do_tcp_redirect;
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -69,8 +71,33 @@ async fn main() -> io::Result<()> {
         }
     });
 
+    // Create local listener.
     let listener = TcpListener::bind(local_addr).await?;
     println!("Listening on {}", listener.local_addr()?);
+
+    // Create QUIC server if needed.
+    if do_quic {
+        use std::net::SocketAddr;
+        use std::path::PathBuf;
+
+        let config = portredirect::quic::QuicConfig {
+            cert_hostname: String::from("example.com"),
+            cert_file: PathBuf::from("/path/to/certificate.pem"),
+            key_file: PathBuf::from("/path/to/key.pem"),
+            listen: "127.0.0.1:4433".parse::<SocketAddr>().unwrap(),
+            stateless_retry: false,
+            connection_limit: None,
+        };
+
+        println!("{:?}", config);
+
+        // Spawn the QUIC server
+        tokio::spawn(async {
+            if let Err(e) = setup_quic(config).await {
+                eprintln!("QUIC setup error: {:?}", e);
+            }
+        });
+    }
 
     // Accept incoming connections.
     loop {
@@ -95,7 +122,7 @@ async fn main() -> io::Result<()> {
                     eprintln!("Connection error: {}", e);
                 }
             });
-        } else {
+        } else if do_quic {
             /*
             let quic_connection = quic_connection.clone();
 

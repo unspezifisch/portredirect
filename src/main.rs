@@ -96,13 +96,14 @@ async fn main() -> io::Result<()> {
                 }
             });
         } else {
+            /*
             let quic_connection = quic_connection.clone();
 
             tokio::spawn(async move {
                 if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
                     eprintln!("Error handling TCP connection: {:?}", e);
                 }
-            });
+            })*/
         }
     }
 }
@@ -183,33 +184,35 @@ async fn handle_tcp_to_quic(
     let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
     println!("Opened QUIC stream for TCP forwarding");
 
-    // Forward TCP -> QUIC
-    let tcp_to_quic = tokio::spawn(async move {
-        let mut buf = [0; 1024];
-        while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            quic_send.write_all(&buf[..bytes_read]).await?;
-        }
-        quic_send.finish().await?; // Signal end of stream
-        Ok::<(), Box<dyn std::error::Error>>(())
-    });
+    /*
+      // Forward TCP -> QUIC
+      let tcp_to_quic = tokio::spawn(async move {
+          let mut buf = [0; 1024];
+          while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
+              if bytes_read == 0 {
+                  break; // End of stream
+              }
+              quic_send.write_all(&buf[..bytes_read]).await?;
+          }
+          quic_send.finish().await?; // Signal end of stream
+          Ok::<(), Box<dyn std::error::Error>>(())
+      });
 
-    // Forward QUIC -> TCP
-    let quic_to_tcp = tokio::spawn(async move {
-        let mut buf = [0; 1024];
-        while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            tcp_stream.write_all(&buf[..bytes_read]).await?;
-        }
-        Ok::<(), Box<dyn std::error::Error>>(())
-    });
+      // Forward QUIC -> TCP
+      let quic_to_tcp = tokio::spawn(async move {
+          let mut buf = [0; 1024];
+          while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
+              if bytes_read == 0 {
+                  break; // End of stream
+              }
+              tcp_stream.write_all(&buf[..bytes_read]).await?;
+          }
+          Ok::<(), Box<dyn std::error::Error>>(())
+      });
 
-    // Wait for both directions to complete
-    tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
+      // Wait for both directions to complete
+      tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
+    */
     println!("Closed QUIC stream for TCP connection");
     Ok(())
 }

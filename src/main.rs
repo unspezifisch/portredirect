@@ -1,6 +1,7 @@
 use clap::Parser;
 use portredirect::quic::setup_quic;
 use quinn::Connection;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -37,8 +38,16 @@ struct ConnectionStats {
     total_bytes: u64,
 }
 
+fn get_config_dir() -> PathBuf {
+    let mut config_dir = dirs::config_dir().expect("Failed to find config directory");
+    config_dir.push("portredirect");
+    config_dir
+}
+
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    let config_dir = get_config_dir();
+
     let args = Args::parse();
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
     let remote_addr = format!("{}:{}", args.remote_host, args.remote_port);
@@ -78,13 +87,15 @@ async fn main() -> io::Result<()> {
     // Create QUIC server if needed.
     if do_quic {
         use std::net::SocketAddr;
-        use std::path::PathBuf;
+
+        let cert_file = config_dir.join("cert.pem");
+        let key_file = config_dir.join("key.pem");
 
         let config = portredirect::quic::QuicConfig {
             cert_hostname: String::from("example.com"),
-            cert_file: PathBuf::from("/path/to/certificate.pem"),
-            key_file: PathBuf::from("/path/to/key.pem"),
-            listen: "127.0.0.1:4433".parse::<SocketAddr>().unwrap(),
+            cert_file,
+            key_file,
+            listen: "0.0.0.0:44333".parse::<SocketAddr>().unwrap(),
             stateless_retry: false,
             connection_limit: None,
         };

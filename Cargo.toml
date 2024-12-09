@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 clap = { version = "4.5.23", features = ["derive"] }
+dirs = "*"
 quinn = "0.11.6"
 rcgen = { version = "0.13.1", features = ["pem", "crypto"] }
 rustls = "0.23.19"

@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use std::{ascii, fs, iter::Peekable, net::SocketAddr, path::PathBuf, str, sync::Arc};
+use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
 
 #[derive(Debug)]
 pub struct QuicConfig {
@@ -80,15 +80,9 @@ pub fn try_load_quic_cert(
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     // Load private key
     let key = fs::read(key_path.clone()).context("failed to read private key")?;
-    let key = if key_path.extension().is_some_and(|x| x == "der") {
-        // DER format
-        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
-    } else {
-        // PEM format
-        rustls_pemfile::private_key(&mut &*key)
-            .context("malformed PKCS #1 private key")?
-            .ok_or_else(|| anyhow::Error::msg("no private keys found"))?
-    };
+
+    // Try to load the key as DER first
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.clone()));
 
     // Load cert chain
     let cert_chain = fs::read(cert_path.clone()).context("failed to read certificate chain")?;
@@ -197,9 +191,12 @@ pub fn generate_quic_cert(
 ) -> Result<()> {
     println!("Generating self-signed certificate");
     let CertifiedKey { cert, key_pair } = generate_simple_self_signed(vec![cert_alt_name.into()])?;
-    fs::write(&cert_path, cert.pem())
+    let key = PrivatePkcs8KeyDer::from(key_pair.serialize_der());
+    let cert: rcgen::Certificate = cert.into();
+
+    fs::write(&cert_path, cert.der())
         .with_context(|| format!("failed to write certificate to: {}", cert_path.display()))?;
-    fs::write(&key_path, key_pair.serialize_pem())
+    fs::write(&key_path, key.secret_pkcs8_der())
         .with_context(|| format!("failed to write private key to: {}", key_path.display()))?;
     Ok(())
 }
@@ -257,11 +254,7 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
             let fut = handle_connection_quic(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    eprintln!(
-                        "Error during QUIC connection from {}: {}",
-                        peer_info,
-                        e
-                    );
+                    eprintln!("Error during QUIC connection from {}: {}", peer_info, e);
                 }
             });
         }

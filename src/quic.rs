@@ -16,12 +16,12 @@ pub struct QuicConfig {
     pub connection_limit: Option<usize>,
 }
 
-pub fn create_default_config(config_dir: PathBuf) -> QuicConfig {
+pub fn create_default_config(config_dir: PathBuf, bind_socket: SocketAddr) -> QuicConfig {
     QuicConfig {
         cert_hostname: "localhost".to_string(),
         cert_file: config_dir.join("cert.pem"),
         key_file: config_dir.join("key.pem"),
-        listen: "127.0.0.1:4433".parse().unwrap(),
+        listen: bind_socket,
         stateless_retry: false,
         connection_limit: None,
     }
@@ -230,8 +230,6 @@ pub async fn setup_quic(config: QuicConfig) -> Result<()> {
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
     let endpoint = quinn::Endpoint::server(server_config, config.listen)?;
-    eprintln!("listening on {}", endpoint.local_addr()?);
-
     while let Some(conn) = endpoint.accept().await {
         if config
             .connection_limit

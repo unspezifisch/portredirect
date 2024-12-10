@@ -1,12 +1,22 @@
-use clap::Parser;
+use anyhow::{Context, Result};
+use clap::{Parser, ValueEnum};
 use portredirect::quic::setup_quic;
 use quinn::Connection;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 mod quic;
+
+/// Modes of operation for the port redirector.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Mode {
+    Quic,
+    DirectForwarding,
+    UnreachableTestHACK,
+}
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -21,15 +31,27 @@ struct Args {
 
     /// Remote host to forward traffic to.
     #[clap(long)]
-    remote_host: String,
+    remote_host: Option<String>,
 
     /// Remote port to forward traffic to.
     #[clap(long)]
-    remote_port: u16,
+    remote_port: Option<u16>,
+
+    /// QUIC server listener host.
+    #[clap(long, default_value = "127.0.0.1")]
+    quic_server_host: String,
+
+    /// QUIC server listener port.
+    #[clap(long)]
+    quic_server_port: Option<u16>,
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
-    psk: Option<String>,
+    quic_psk: Option<String>,
+
+    /// Mode of operation: quic or direct-forwarding.
+    #[clap(long, value_enum)]
+    mode: Mode,
 }
 
 /// Data structure to hold connection statistics.
@@ -39,28 +61,60 @@ struct ConnectionStats {
 }
 
 /// Returns the path to the configuration directory, creating it if necessary.
-fn get_config_dir() -> io::Result<PathBuf> {
-    let mut config_dir = dirs::config_dir().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "Failed to find config directory")
-    })?;
+fn get_config_dir() -> Result<PathBuf> {
+    let mut config_dir =
+        dirs::config_dir().context("Failed to find your platform's config directory")?;
     config_dir.push("portredirect");
 
     // Create the directory if it doesn't exist
-    std::fs::create_dir_all(&config_dir)?;
+    std::fs::create_dir_all(&config_dir).context("create config dir")?;
 
     Ok(config_dir)
 }
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() -> Result<()> {
+    // Get or create config directory.
     let config_dir = get_config_dir()?;
     println!("Configuration directory: {:?}", config_dir);
 
+    // Parse args.
     let args = Args::parse();
+    let mut remote_addr = String::new();
+    let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
-    let remote_addr = format!("{}:{}", args.remote_host, args.remote_port);
-    let do_tcp_redirect = args.psk.is_none();
-    let do_quic = !do_tcp_redirect;
+
+    if args.mode == Mode::DirectForwarding {
+        // Ensure required arguments are provided
+        match (args.remote_host.as_ref(), args.remote_port) {
+            (Some(host), Some(port)) => {
+                remote_addr = format!("{}:{}", host, port);
+            }
+            _ => {
+                eprintln!("Error: --remote-host and --remote-port must be specified in DirectForwarding mode.");
+                std::process::exit(1);
+            }
+        }
+    } else if args.mode == Mode::Quic {
+        match (args.quic_server_host, args.quic_server_port, args.quic_psk) {
+            (quic_server_host, Some(quic_server_port), Some(_)) => {
+                // Parameters are complete.
+                quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
+                    .to_socket_addrs()
+                    .expect("Invalid host or port")
+                    .next()
+                    .expect("Unable to resolve address");
+            }
+            _ => {
+                eprintln!(
+                    "Error: --quic-server-port and --quic-psk must be specified in Quic mode."
+                );
+                std::process::exit(1);
+            }
+        }
+    } else {
+        unreachable!();
+    }
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -95,13 +149,17 @@ async fn main() -> io::Result<()> {
             format!("Failed to bind to {}: {}", local_addr, e),
         )
     })?;
-    println!("Listening on {}", listener.local_addr()?);
+    println!("TCP listening on {}", listener.local_addr()?);
 
     // Create QUIC server if needed.
-    if do_quic {
-        let config = portredirect::quic::create_default_config(config_dir);
+    if args.mode == Mode::Quic {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
 
-        println!("{:?}", config);
+        println!("QUIC listening on {}", quic_bind_addr.clone());
+
+        let config = portredirect::quic::create_default_config(config_dir, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {
@@ -120,21 +178,21 @@ async fn main() -> io::Result<()> {
                 continue;
             }
         };
+        println!("New TCP connection from: {:?}", local_socket.peer_addr());
 
-        if do_tcp_redirect {
-            let remote_addr = remote_addr.clone();
+        if args.mode == Mode::DirectForwarding {
             let stats = stats.clone();
-            println!("New TCP connection from: {}", remote_addr);
+            let remote_addr = remote_addr.clone();
 
             tokio::spawn(async move {
                 // Handle the connection.
                 if let Err(e) =
-                    handle_tcp_connection_redirect(local_socket, remote_addr, stats.clone()).await
+                    handle_tcp_connection_redirect(local_socket, remote_addr, stats).await
                 {
                     eprintln!("Connection error: {}", e);
                 }
             });
-        } else if do_quic {
+        } else if args.mode == Mode::Quic {
             /*
             let quic_connection = quic_connection.clone();
 

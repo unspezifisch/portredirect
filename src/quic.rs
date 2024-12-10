@@ -16,6 +16,17 @@ pub struct QuicConfig {
     pub connection_limit: Option<usize>,
 }
 
+pub fn create_default_config(config_dir: PathBuf) -> QuicConfig {
+    QuicConfig {
+        cert_hostname: "localhost".to_string(),
+        cert_file: config_dir.join("cert.pem"),
+        key_file: config_dir.join("key.pem"),
+        listen: "127.0.0.1:4433".parse().unwrap(),
+        stateless_retry: false,
+        connection_limit: None,
+    }
+}
+
 /// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
 ///
 /// This function reads a private key and certificate chain from the provided file paths

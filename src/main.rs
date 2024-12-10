@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
 
         println!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let config = portredirect::quic::create_default_config(config_dir, quic_bind_addr);
+        let config = portredirect::quic::QuicConfig::create_default_config(config_dir, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {

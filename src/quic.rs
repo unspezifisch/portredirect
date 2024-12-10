@@ -16,14 +16,16 @@ pub struct QuicConfig {
     pub connection_limit: Option<usize>,
 }
 
-pub fn create_default_config(config_dir: PathBuf, bind_socket: SocketAddr) -> QuicConfig {
-    QuicConfig {
-        cert_hostname: "localhost".to_string(),
-        cert_file: config_dir.join("cert.pem"),
-        key_file: config_dir.join("key.pem"),
-        listen: bind_socket,
-        stateless_retry: false,
-        connection_limit: None,
+impl QuicConfig {
+    pub fn create_default_config(config_dir: PathBuf, bind_socket: SocketAddr) -> Self {
+        QuicConfig {
+            cert_hostname: "localhost".to_string(),
+            cert_file: config_dir.join("cert.pem"),
+            key_file: config_dir.join("key.pem"),
+            listen: bind_socket,
+            stateless_retry: false,
+            connection_limit: None,
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use portredirect::quic::setup_quic;
+use portredirect::quic::setup_and_run_quic_server;
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
 
         // Spawn the QUIC server
         tokio::spawn(async {
-            if let Err(e) = setup_quic(config).await {
+            if let Err(e) = setup_and_run_quic_server(config).await {
                 eprintln!("QUIC setup error: {:?}", e);
             }
         });

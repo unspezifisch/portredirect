@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
+use std::{ascii, fs, iter::Peekable, net::SocketAddr, path::PathBuf, str, sync::Arc};
 
 #[derive(Debug)]
 pub struct QuicConfig {
@@ -28,6 +28,9 @@ impl QuicConfig {
         }
     }
 }
+
+#[allow(unused)]
+pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"]; // HACK this should be our own protocol ID
 
 /// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
 ///
@@ -201,7 +204,7 @@ pub fn generate_quic_cert(
     Ok(())
 }
 
-pub async fn setup_quic(config: QuicConfig) -> Result<()> {
+pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     let (cert_chain, key_der) =
         match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
             Ok(ret) => ret,
@@ -222,9 +225,10 @@ pub async fn setup_quic(config: QuicConfig) -> Result<()> {
             }
         };
 
-    let server_crypto = rustls::ServerConfig::builder()
+    let mut server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert_chain, key_der)?;
+    server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
 
     let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
@@ -243,11 +247,21 @@ pub async fn setup_quic(config: QuicConfig) -> Result<()> {
             println!("requiring connection to validate its address");
             conn.retry().unwrap();
         } else {
-            println!("accepting connection");
+            let peer_info = format!(
+                "client: {} (validated: {})",
+                conn.remote_address(),
+                conn.remote_address_validated()
+            );
+            println!("Accepting QUIC connection from {}", peer_info);
+
             let fut = handle_connection_quic(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    eprintln!("connection failed: {reason}", reason = e.to_string())
+                    eprintln!(
+                        "Error during QUIC connection from {}: {}",
+                        peer_info,
+                        e
+                    );
                 }
             });
         }

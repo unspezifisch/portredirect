@@ -1,1 +1,2 @@
-fnoord@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkJ3DDf9WpKDHozwWIPwJngQyaTXsInSTUXxbS8mHN4 fnoord
+ namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKkJ3DDf9WpKDHozwWIPwJngQyaTXsInSTUXxbS8mHN4 fnoord-r
+ namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMvKDpp9O4rTgQXghWmXqzWkxEFTjSmGyyLQauDsiKID fnoord-g

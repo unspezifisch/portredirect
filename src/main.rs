@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tracing::{debug, error, info, span, warn, Level};
+use tracing_subscriber;
 
 mod quic;
 
@@ -74,9 +76,14 @@ fn get_config_dir() -> Result<PathBuf> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_line_number(true)
+        .init();
+
     // Get or create config directory.
     let config_dir = get_config_dir()?;
-    println!("Configuration directory: {:?}", config_dir);
+    info!("Configuration directory: {:?}", config_dir);
 
     // Parse args.
     let args = Args::parse();
@@ -91,7 +98,7 @@ async fn main() -> Result<()> {
                 remote_addr = format!("{}:{}", host, port);
             }
             _ => {
-                eprintln!("Error: --remote-host and --remote-port must be specified in DirectForwarding mode.");
+                error!("Error: --remote-host and --remote-port must be specified in DirectForwarding mode.");
                 std::process::exit(1);
             }
         }
@@ -106,7 +113,7 @@ async fn main() -> Result<()> {
                     .expect("Unable to resolve address");
             }
             _ => {
-                eprintln!(
+                error!(
                     "Error: --quic-server-port and --quic-psk must be specified in Quic mode."
                 );
                 std::process::exit(1);
@@ -132,7 +139,7 @@ async fn main() -> Result<()> {
             sleep(Duration::from_secs(1)).await;
             let stats = stats_clone.lock().unwrap();
             if stats.total_bytes != previous_total_bytes || !printed_once {
-                println!(
+                info!(
                     "\rActive connections: {}\tTotal data: {} bytes",
                     stats.connection_count, stats.total_bytes
                 );
@@ -149,7 +156,7 @@ async fn main() -> Result<()> {
             format!("Failed to bind to {}: {}", local_addr, e),
         )
     })?;
-    println!("TCP listening on {}", listener.local_addr()?);
+    info!("TCP listening on {}", listener.local_addr()?);
 
     // Create QUIC server if needed.
     if args.mode == Mode::Quic {
@@ -157,7 +164,7 @@ async fn main() -> Result<()> {
             .install_default()
             .expect("Failed to install rustls crypto provider");
 
-        println!("QUIC listening on {}", quic_bind_addr.clone());
+        info!("QUIC listening on {}", quic_bind_addr.clone());
 
         let config = portredirect::quic::QuicConfig::create_default_config(config_dir, quic_bind_addr);
 
@@ -178,7 +185,7 @@ async fn main() -> Result<()> {
                 continue;
             }
         };
-        println!("New TCP connection from: {:?}", local_socket.peer_addr());
+        debug!("New TCP connection from: {:?}", local_socket.peer_addr());
 
         if args.mode == Mode::DirectForwarding {
             let stats = stats.clone();
@@ -189,7 +196,7 @@ async fn main() -> Result<()> {
                 if let Err(e) =
                     handle_tcp_connection_redirect(local_socket, remote_addr, stats).await
                 {
-                    eprintln!("Connection error: {}", e);
+                    error!("Connection error: {}", e);
                 }
             });
         } else if args.mode == Mode::Quic {
@@ -279,7 +286,7 @@ async fn handle_tcp_to_quic(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open a new QUIC stream
     let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
-    println!("Opened QUIC stream for TCP forwarding");
+    debug!("Opened QUIC stream for TCP forwarding");
 
     /*
       // Forward TCP -> QUIC
@@ -310,6 +317,6 @@ async fn handle_tcp_to_quic(
       // Wait for both directions to complete
       tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
     */
-    println!("Closed QUIC stream for TCP connection");
+    debug!("Closed QUIC stream for TCP connection");
     Ok(())
 }

@@ -282,6 +282,7 @@ async fn handle_tcp_connection_redirect(
     Ok(())
 }
 
+#[allow(unused)]
 async fn handle_tcp_to_quic(
     mut tcp_stream: tokio::net::TcpStream,
     quic_connection: Connection,

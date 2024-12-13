@@ -4,7 +4,7 @@ use quinn::crypto::rustls::QuicServerConfig;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{debug, error, info, instrument, span, warn, Instrument, Level, Span};
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -207,31 +207,39 @@ pub fn generate_quic_cert(
 }
 
 #[allow(unused)]
+#[instrument(skip(config), fields(hostname = %config.cert_hostname))]
 pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
-    let (cert_chain, key_der) =
-        match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
-            Ok(ret) => ret,
-            Err(e) => {
-                generate_quic_cert(
-                    config.cert_hostname,
-                    config.key_file.clone(),
-                    config.cert_file.clone(),
-                )
-                .with_context(|| {
-                    format!(
-                        "Generating QUIC certificate (because we couldn't load it earlier: {})",
-                        e
-                    )
-                })?;
-                try_load_quic_cert(config.key_file.clone(), config.cert_file.clone())
-                    .context("loading after generating")?
-            }
-        };
+    info!("Starting QUIC server setup");
 
+    let (cert_chain, key_der) = match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
+        Ok(ret) => {
+            info!("Successfully loaded QUIC certificate");
+            ret
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to load QUIC certificate, generating new one");
+            generate_quic_cert(
+                config.cert_hostname.clone(),
+                config.key_file.clone(),
+                config.cert_file.clone(),
+            )
+            .with_context(|| {
+                format!(
+                    "Generating QUIC certificate (because we couldn't load it earlier: {})",
+                    e
+                )
+            })?;
+            info!("Generated new QUIC certificate, attempting to load it");
+            try_load_quic_cert(config.key_file.clone(), config.cert_file.clone())
+                .context("loading after generating")?
+        }
+    };
+
+    info!("Configuring rustls server");
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(cert_chain, key_der).
-        context("rustls::ServerConfig::builder")?;
+        .with_single_cert(cert_chain, key_der)
+        .context("rustls config")?;
     server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
 
     let mut server_config =
@@ -239,16 +247,27 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
+    info!(listen_addr = %config.listen, "Binding QUIC endpoint");
     let endpoint = quinn::Endpoint::server(server_config, config.listen)?;
+
+    info!("QUIC server is ready and accepting connections");
     while let Some(conn) = endpoint.accept().await {
+        let conn_span = Span::current();
+
         if config
             .connection_limit
             .is_some_and(|n| endpoint.open_connections() >= n)
         {
-            warn!("refusing due to open connection limit");
+            warn!(
+                "Refusing connection: open connection limit ({}) reached",
+                config.connection_limit.unwrap()
+            );
             conn.refuse();
         } else if config.stateless_retry && !conn.remote_address_validated() {
-            warn!("requiring connection to validate its address");
+            warn!(
+                "Requiring connection from {} to validate its address",
+                conn.remote_address()
+            );
             conn.retry().unwrap();
         } else {
             let peer_info = format!(
@@ -258,7 +277,7 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
             );
             debug!("Accepting QUIC connection from {}", peer_info);
 
-            let fut = handle_connection_quic(conn);
+            let fut = handle_connection_quic(conn).instrument(conn_span.clone());
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("Error during QUIC connection from {}: {}", peer_info, e);

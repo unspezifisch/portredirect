@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use portredirect::quic::setup_and_run_quic_server;
+use portredirect::get_config_dir;
+use quic::{setup_and_run_quic_server, QuicConfig};
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -17,7 +17,7 @@ mod quic;
 enum Mode {
     Quic,
     DirectForwarding,
-    UnreachableTestHACK,
+    UnreachableTestHACK, // TODO remove after checking unreachable does what I think it does
 }
 
 /// Command-line arguments for the port redirector tool.
@@ -62,21 +62,10 @@ struct ConnectionStats {
     total_bytes: u64,
 }
 
-/// Returns the path to the configuration directory, creating it if necessary.
-fn get_config_dir() -> Result<PathBuf> {
-    let mut config_dir =
-        dirs::config_dir().context("Failed to find your platform's config directory")?;
-    config_dir.push("portredirect");
-
-    // Create the directory if it doesn't exist
-    std::fs::create_dir_all(&config_dir).context("create config dir")?;
-
-    Ok(config_dir)
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
         .with_target(true)
         .with_line_number(true)
         .init();
@@ -167,13 +156,12 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let config =
-            portredirect::quic::QuicConfig::create_default_config(config_dir, quic_bind_addr);
+        let config = QuicConfig::create_default_config(config_dir, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {
             if let Err(e) = setup_and_run_quic_server(config).await {
-                eprintln!("QUIC setup error: {:?}", e);
+                error!(error = %e, "QUIC thread error");
             }
         });
     }

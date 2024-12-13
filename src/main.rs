@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{debug, error, info, span, Level};
 use tracing_subscriber;
 
 mod quic;
@@ -81,6 +81,9 @@ async fn main() -> Result<()> {
         .with_line_number(true)
         .init();
 
+    let root_span = span!(Level::INFO, "app_main");
+    let _enter = root_span.enter();
+
     // Get or create config directory.
     let config_dir = get_config_dir()?;
     info!("Configuration directory: {:?}", config_dir);
@@ -113,9 +116,7 @@ async fn main() -> Result<()> {
                     .expect("Unable to resolve address");
             }
             _ => {
-                error!(
-                    "Error: --quic-server-port and --quic-psk must be specified in Quic mode."
-                );
+                error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
                 std::process::exit(1);
             }
         }
@@ -140,7 +141,7 @@ async fn main() -> Result<()> {
             let stats = stats_clone.lock().unwrap();
             if stats.total_bytes != previous_total_bytes || !printed_once {
                 info!(
-                    "\rActive connections: {}\tTotal data: {} bytes",
+                    "Active connections: {}, Total data: {} bytes",
                     stats.connection_count, stats.total_bytes
                 );
                 previous_total_bytes = stats.total_bytes;
@@ -166,7 +167,8 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let config = portredirect::quic::QuicConfig::create_default_config(config_dir, quic_bind_addr);
+        let config =
+            portredirect::quic::QuicConfig::create_default_config(config_dir, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {

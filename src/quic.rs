@@ -4,8 +4,10 @@ use quinn::crypto::rustls::QuicServerConfig;
 use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{ascii, fs, net::SocketAddr, path::PathBuf, str, sync::Arc};
+use tracing::{debug, error, info, span, warn, Level};
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct QuicConfig {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
@@ -17,6 +19,7 @@ pub struct QuicConfig {
 }
 
 impl QuicConfig {
+    #[allow(unused)]
     pub fn create_default_config(config_dir: PathBuf, bind_socket: SocketAddr) -> Self {
         QuicConfig {
             cert_hostname: "localhost".to_string(),
@@ -74,6 +77,7 @@ pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"]; // HACK this should be our own
 /// ```
 ///
 /// Note: Ensure that the file paths provided are accessible and have the correct permissions.
+#[allow(unused)]
 pub fn try_load_quic_cert(
     key_path: PathBuf,
     cert_path: PathBuf,
@@ -184,12 +188,13 @@ pub fn try_load_quic_cert(
 ///
 /// Note: This function is suitable for development and testing purposes. For production,
 /// use a trusted certificate authority to issue certificates.
+#[allow(unused)]
 pub fn generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
 ) -> Result<()> {
-    println!("Generating self-signed certificate");
+    info!("Generating self-signed certificate");
     let CertifiedKey { cert, key_pair } = generate_simple_self_signed(vec![cert_alt_name.into()])?;
     let key = PrivatePkcs8KeyDer::from(key_pair.serialize_der());
     let cert: rcgen::Certificate = cert.into();
@@ -201,6 +206,7 @@ pub fn generate_quic_cert(
     Ok(())
 }
 
+#[allow(unused)]
 pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     let (cert_chain, key_der) =
         match try_load_quic_cert(config.key_file.clone(), config.cert_file.clone()) {
@@ -239,10 +245,10 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
             .connection_limit
             .is_some_and(|n| endpoint.open_connections() >= n)
         {
-            println!("refusing due to open connection limit");
+            warn!("refusing due to open connection limit");
             conn.refuse();
         } else if config.stateless_retry && !conn.remote_address_validated() {
-            println!("requiring connection to validate its address");
+            warn!("requiring connection to validate its address");
             conn.retry().unwrap();
         } else {
             let peer_info = format!(
@@ -250,12 +256,12 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
                 conn.remote_address(),
                 conn.remote_address_validated()
             );
-            println!("Accepting QUIC connection from {}", peer_info);
+            debug!("Accepting QUIC connection from {}", peer_info);
 
             let fut = handle_connection_quic(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    eprintln!("Error during QUIC connection from {}: {}", peer_info, e);
+                    error!("Error during QUIC connection from {}: {}", peer_info, e);
                 }
             });
         }
@@ -264,17 +270,18 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
-        println!("QUIC connection established");
+        debug!("QUIC connection established");
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    println!("QUIC connection closed");
+                    debug!("QUIC connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -285,7 +292,7 @@ async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
             let fut = handle_request_quic(stream);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    eprintln!("failed: {reason}", reason = e.to_string());
+                    error!("failed: {reason}", reason = e.to_string());
                 }
             });
         }
@@ -294,6 +301,7 @@ async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 async fn handle_request_quic(
     (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
@@ -306,7 +314,7 @@ async fn handle_request_quic(
         let part = ascii::escape_default(x).collect::<Vec<_>>();
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
-    println!("{}", escaped);
+    debug!(escaped=%escaped, "hrq");
 
     // Execute the request
     let resp = vec![0x41, 0x42, 0x43];
@@ -316,6 +324,6 @@ async fn handle_request_quic(
         .map_err(|e| anyhow!("failed to send response: {}", e))?;
     // Gracefully terminate the stream
     send.finish().unwrap();
-    println!("complete");
+    debug!("complete");
     Ok(())
 }

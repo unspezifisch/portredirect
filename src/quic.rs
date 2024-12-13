@@ -1,10 +1,9 @@
 // based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
 use anyhow::{anyhow, bail, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
-use rcgen::{generate_simple_self_signed, CertifiedKey};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
-use tracing::{debug, error, event, info, instrument, warn, Instrument, Level, Span};
+use tracing::{debug, error, info, instrument, warn, Instrument, Span};
 
 use portredirect::get_config_dir;
 
@@ -22,9 +21,13 @@ pub struct QuicConfig {
 
 impl QuicConfig {
     #[allow(unused)]
-    pub fn create_default_config(config_dir: PathBuf, bind_socket: SocketAddr) -> Self {
+    pub fn create_default_config(
+        config_dir: PathBuf,
+        cert_alt_name: String,
+        bind_socket: SocketAddr,
+    ) -> Self {
         QuicConfig {
-            cert_hostname: "localhost".to_string(),
+            cert_hostname: cert_alt_name,
             cert_file: config_dir.join("cert.der"),
             key_file: config_dir.join("key.der"),
             listen: bind_socket,
@@ -80,6 +83,7 @@ pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"]; // HACK this should be our own
 ///
 /// Note: Ensure that the file paths provided are accessible and have the correct permissions.
 #[allow(unused)]
+#[instrument()]
 pub fn load_or_generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
@@ -93,6 +97,7 @@ pub fn load_or_generate_quic_cert(
 }
 
 #[allow(unused)]
+#[instrument()]
 pub fn load_quic_cert(
     key_path: PathBuf,
     cert_path: PathBuf,
@@ -204,6 +209,7 @@ pub fn load_quic_cert(
 /// Note: This function is suitable for development and testing purposes. For production,
 /// use a trusted certificate authority to issue certificates.
 #[allow(unused)]
+#[instrument()]
 pub fn generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
@@ -234,8 +240,8 @@ pub fn generate_quic_cert(
 }
 
 #[allow(unused)]
-#[instrument(skip(config), fields(hostname = %config.cert_hostname))]
-pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
+#[instrument(skip(config))]
+pub async fn run_quic_server(config: QuicConfig) -> Result<()> {
     info!("Starting QUIC server setup");
 
     let (cert_chain, key_der) = load_or_generate_quic_cert(
@@ -245,13 +251,7 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     )
     .context("loading or generating cert")?;
 
-    info!("Configuring rustls server");
-    event!(
-        Level::DEBUG,
-        "cert_chain {:?} key_der {:?}.",
-        cert_chain,
-        key_der
-    );
+    info!("Configuring rustls server ({} certs, key: {:?})", cert_chain.len(), key_der);
 
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
@@ -294,9 +294,8 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
             );
             debug!(peer = %peer_info, "Accepting new QUIC connection");
 
-            let fut = handle_connection_quic(conn).instrument(conn_span.clone());
             tokio::spawn(async move {
-                if let Err(e) = fut.await {
+                if let Err(e) = handle_connection_quic(conn).await {
                     error!(error = %e, peer = %peer_info, "Error during QUIC connection");
                 }
             });
@@ -307,6 +306,7 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
 }
 
 #[allow(unused)]
+#[instrument(skip(conn))]
 async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
@@ -338,6 +338,7 @@ async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
 }
 
 #[allow(unused)]
+#[instrument(skip(send, recv))]
 async fn handle_request_quic(
     (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
@@ -350,7 +351,7 @@ async fn handle_request_quic(
         let part = ascii::escape_default(x).collect::<Vec<_>>();
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
-    debug!(escaped=%escaped, "hrq");
+    debug!(escaped=%escaped);
 
     // Execute the request
     let resp = vec![0x41, 0x42, 0x43];

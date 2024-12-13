@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use portredirect::get_config_dir;
-use quic::{setup_and_run_quic_server, QuicConfig};
+use quic::{run_quic_server, QuicConfig};
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, span, Instrument, Level};
 use tracing_subscriber;
 
 mod quic;
@@ -45,6 +45,10 @@ struct Args {
     /// QUIC server listener port.
     #[clap(long)]
     quic_server_port: Option<u16>,
+
+    /// QUIC server certificate Subject Alt Name.
+    #[clap(long, default_value = "localhost")]
+    quic_cert_hostname: String,
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
@@ -124,6 +128,7 @@ async fn main() -> Result<()> {
         use tokio::time::{sleep, Duration};
         let mut printed_once = false;
         let mut previous_total_bytes = 0u64;
+
         loop {
             sleep(Duration::from_secs(1)).await;
             let stats = stats_clone.lock().unwrap();
@@ -155,11 +160,12 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let config = QuicConfig::create_default_config(config_dir, quic_bind_addr);
+        let config =
+            QuicConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {
-            if let Err(e) = setup_and_run_quic_server(config).await {
+            if let Err(e) = run_quic_server(config).await {
                 error!(error = %e, "QUIC thread error");
             }
         });

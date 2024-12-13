@@ -17,7 +17,6 @@ mod quic;
 enum Mode {
     Quic,
     DirectForwarding,
-    UnreachableTestHACK, // TODO remove after checking unreachable does what I think it does
 }
 
 /// Command-line arguments for the port redirector tool.
@@ -177,6 +176,12 @@ async fn main() -> Result<()> {
         };
         debug!("New TCP connection from: {:?}", local_socket.peer_addr());
 
+        // Increment connection count.
+        {
+            let mut stats = stats.lock().unwrap();
+            stats.connection_count += 1;
+        }
+
         if args.mode == Mode::DirectForwarding {
             let stats = stats.clone();
             let remote_addr = remote_addr.clone();
@@ -198,6 +203,14 @@ async fn main() -> Result<()> {
                     eprintln!("Error handling TCP connection: {:?}", e);
                 }
             })*/
+        } else {
+            unreachable!();
+        }
+
+        // Decrement connection count.
+        {
+            let mut stats = stats.lock().unwrap();
+            stats.connection_count -= 1;
         }
     }
 }
@@ -213,12 +226,6 @@ async fn handle_tcp_connection_redirect(
     remote_addr: String,
     stats: Arc<Mutex<ConnectionStats>>,
 ) -> io::Result<()> {
-    // Increment connection count.
-    {
-        let mut stats = stats.lock().unwrap();
-        stats.connection_count += 1;
-    }
-
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
     // Split the sockets into read and write halves
@@ -260,12 +267,6 @@ async fn handle_tcp_connection_redirect(
 
     // Wait for both tasks to complete.
     let _ = tokio::try_join!(local_to_remote_task, remote_to_local_task)?;
-
-    // Decrement connection count.
-    {
-        let mut stats = stats.lock().unwrap();
-        stats.connection_count -= 1;
-    }
 
     Ok(())
 }

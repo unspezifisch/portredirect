@@ -292,12 +292,12 @@ pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
                 conn.remote_address(),
                 conn.remote_address_validated()
             );
-            debug!("Accepting QUIC connection from {}", peer_info);
+            debug!(peer = %peer_info, "Accepting new QUIC connection");
 
             let fut = handle_connection_quic(conn).instrument(conn_span.clone());
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("Error during QUIC connection from {}: {}", peer_info, e);
+                    error!(error = %e, peer = %peer_info, "Error during QUIC connection");
                 }
             });
         }

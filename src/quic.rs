@@ -81,54 +81,41 @@ pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"]; // HACK this should be our own
 /// Note: Ensure that the file paths provided are accessible and have the correct permissions.
 #[allow(unused)]
 pub fn load_or_generate_quic_cert(
+    cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     if key_path.exists() && cert_path.exists() {
-        // Key files exists, so try loading
-        let key = fs::read(key_path.clone()).context("failed to read private key")?;
-        let key = if key_path.extension().is_some_and(|x| x == "der") {
-            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
-        } else {
-            rustls_pemfile::private_key(&mut &*key)
-                .context("malformed PKCS #1 private key")?
-                .ok_or_else(|| anyhow::Error::msg("no private keys found"))?
-        };
-        let cert_chain = fs::read(cert_path.clone()).context("failed to read certificate chain")?;
-        let cert_chain = if cert_path.extension().is_some_and(|x| x == "der") {
-            vec![CertificateDer::from(cert_chain)]
-        } else {
-            rustls_pemfile::certs(&mut &*cert_chain)
-                .collect::<Result<_, _>>()
-                .context("invalid PEM-encoded certificate")?
-        };
-
-        Ok((cert_chain, key))
+        load_quic_cert(key_path, cert_path)
     } else {
-        let path = get_config_dir().unwrap();
-        let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
-            Ok((cert, key)) => (
-                CertificateDer::from(cert),
-                PrivateKeyDer::try_from(key).map_err(anyhow::Error::msg)?,
-            ),
-            Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-                info!("generating self-signed certificate");
-                let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-                let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-                let cert = cert.cert.into();
-                fs::create_dir_all(path).context("failed to create certificate directory")?;
-                fs::write(&cert_path, &cert).context("failed to write certificate")?;
-                fs::write(&key_path, key.secret_pkcs8_der())
-                    .context("failed to write private key")?;
-                (cert, key.into())
-            }
-            Err(e) => {
-                bail!("failed to read certificate: {}", e);
-            }
-        };
-
-        Ok((vec![cert], key))
+        generate_quic_cert(cert_alt_name, key_path, cert_path)
     }
+}
+
+#[allow(unused)]
+pub fn load_quic_cert(
+    key_path: PathBuf,
+    cert_path: PathBuf,
+) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+    // Try loading
+    let key = fs::read(key_path.clone()).context("failed to read private key")?;
+    let key = if key_path.extension().is_some_and(|x| x == "der") {
+        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key))
+    } else {
+        rustls_pemfile::private_key(&mut &*key)
+            .context("malformed PKCS #1 private key")?
+            .ok_or_else(|| anyhow::Error::msg("no private keys found"))?
+    };
+    let cert_chain = fs::read(cert_path.clone()).context("failed to read certificate chain")?;
+    let cert_chain = if cert_path.extension().is_some_and(|x| x == "der") {
+        vec![CertificateDer::from(cert_chain)]
+    } else {
+        rustls_pemfile::certs(&mut &*cert_chain)
+            .collect::<Result<_, _>>()
+            .context("invalid PEM-encoded certificate")?
+    };
+
+    Ok((cert_chain, key))
 }
 
 /// Generates a self-signed certificate and private key, or loads existing ones if they exist.
@@ -218,21 +205,32 @@ pub fn load_or_generate_quic_cert(
 /// use a trusted certificate authority to issue certificates.
 #[allow(unused)]
 pub fn generate_quic_cert(
-    // TODO OLD leftover, remove
     cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
-) -> Result<()> {
-    info!("Generating self-signed certificate");
-    let CertifiedKey { cert, key_pair } = generate_simple_self_signed(vec![cert_alt_name.into()])?;
-    let key = PrivatePkcs8KeyDer::from(key_pair.serialize_der());
-    let cert: rcgen::Certificate = cert.into();
+) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+    let path = get_config_dir().unwrap();
+    let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
+        Ok((cert, key)) => (
+            CertificateDer::from(cert),
+            PrivateKeyDer::try_from(key).map_err(anyhow::Error::msg)?,
+        ),
+        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
+            info!("generating self-signed certificate");
+            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()]).unwrap();
+            let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+            let cert = cert.cert.into();
+            fs::create_dir_all(path).context("failed to create certificate directory")?;
+            fs::write(&cert_path, &cert).context("failed to write certificate")?;
+            fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
+            (cert, key.into())
+        }
+        Err(e) => {
+            bail!("failed to read certificate: {}", e);
+        }
+    };
 
-    fs::write(&cert_path, cert.der())
-        .with_context(|| format!("failed to write certificate to: {}", cert_path.display()))?;
-    fs::write(&key_path, key.secret_pkcs8_der())
-        .with_context(|| format!("failed to write private key to: {}", key_path.display()))?;
-    Ok(())
+    Ok((vec![cert], key))
 }
 
 #[allow(unused)]
@@ -240,9 +238,12 @@ pub fn generate_quic_cert(
 pub async fn setup_and_run_quic_server(config: QuicConfig) -> Result<()> {
     info!("Starting QUIC server setup");
 
-    let (cert_chain, key_der) =
-        load_or_generate_quic_cert(config.key_file.clone(), config.cert_file.clone())
-            .context("loading or generating cert")?;
+    let (cert_chain, key_der) = load_or_generate_quic_cert(
+        config.cert_hostname,
+        config.key_file.clone(),
+        config.cert_file.clone(),
+    )
+    .context("loading or generating cert")?;
 
     info!("Configuring rustls server");
     event!(

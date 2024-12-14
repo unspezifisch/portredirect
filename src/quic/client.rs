@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::ALPN_QUIC_PORTREDIRECT;
 
@@ -90,9 +90,6 @@ where
     let mut endpoint = quinn::Endpoint::client(config.local_socket)?;
     endpoint.set_default_client_config(client_config);
 
-    // Initial request.
-    let request = format!("HELLO I AM PRCLIENT\r\n");
-
     // Connect.
     let start = Instant::now();
     info!(
@@ -105,46 +102,79 @@ where
         .connect(config.remote_socket, server_name_match.as_str())?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
-    debug!("connected at {:?}", start.elapsed());
-    let (mut send, mut recv) = conn
-        .open_bi()
-        .await
-        .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+    debug!("QUIC connected at {:?}", start.elapsed());
 
-    // TODO do we need this?
-    let rebind = false;
-    if rebind {
-        let socket = std::net::UdpSocket::bind("[::]:0").unwrap();
-        let addr = socket.local_addr().unwrap();
-        info!("rebinding to {addr}");
-        endpoint.rebind(socket).expect("rebind failed");
+    // Open AUTH channel. It's where we prove to the server that we know the PSK.
+    {
+        let (mut send, mut recv) = conn
+            .open_bi()
+            .await
+            .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+
+        // TODO do we need this? also it's not auth-specific.
+        let rebind = false;
+        if rebind {
+            let socket = std::net::UdpSocket::bind("[::]:0").unwrap();
+            let addr = socket.local_addr().unwrap();
+            info!("rebinding to {addr}");
+            endpoint.rebind(socket).expect("rebind failed");
+        }
+
+        // Auth request.
+        let request = format!("AUTH ME\n");
+        send.write_all(request.as_bytes())
+            .await
+            .map_err(|e| anyhow!("failed to send request: {}", e))?;
+        send.finish().unwrap();
+
+        let response_start = Instant::now();
+        debug!("request sent at {:?}", response_start - start);
+        let resp = recv
+            .read_to_end(usize::MAX)
+            .await
+            .map_err(|e| anyhow!("failed to read response: {}", e))?;
+        let duration = response_start.elapsed();
+        debug!(
+            "response received in {:?} - {} KiB/s",
+            duration,
+            resp.len() as f32 / (duration_secs(&duration) * 1024.0)
+        );
+    
+        warn!("TODO in auth");
     }
 
-    send.write_all(request.as_bytes())
-        .await
-        .map_err(|e| anyhow!("failed to send request: {}", e))?;
-    send.finish().unwrap();
+    let auth_time = Instant::now() - start;
+    info!(auth_time_s=auth_time.as_secs(), "PR QUIC connection to server is established.");
+    loop {
+        match conn.accept_bi().await {
+            Ok((send_stream, recv_stream)) => {
+                // Spawn a Tokio task to handle the incoming stream using the callback.
+                tokio::spawn(async move {
+                    /* TODO let (write_half, read_half) = tokio::io::split(send_stream, recv_stream);
+                    if let Err(e) = callback(write_half, read_half).await {
+                        error!("Error in stream callback: {}", e);
+                    }*/
+                });
+                debug!("Spawned task to handle incoming stream.");
+            }
+            Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+                // Handle connection closed by the server gracefully.
+                info!("Connection closed by the server.");
+                break;
+            }
+            Err(e) => {
+                // Log other connection errors and decide whether to break or continue.
+                error!("Failed to accept incoming stream: {}", e);
+                break;
+            }
+        }
+    }
 
-    let response_start = Instant::now();
-    eprintln!("request sent at {:?}", response_start - start);
-    let resp = recv
-        .read_to_end(usize::MAX)
-        .await
-        .map_err(|e| anyhow!("failed to read response: {}", e))?;
-    let duration = response_start.elapsed();
-    eprintln!(
-        "response received in {:?} - {} KiB/s",
-        duration,
-        resp.len() as f32 / (duration_secs(&duration) * 1024.0)
-    );
-    io::stdout().write_all(&resp).unwrap();
-    io::stdout().flush().unwrap();
     conn.close(0u32.into(), b"done");
 
-    // Give the server a fair chance to receive the close packet
+    // Graceful shutdown or cleanup after loop exits.
     endpoint.wait_idle().await;
-
-    // TODO callback etc.
+    info!("Client endpoint idle and cleaned up.");
 
     Ok(())
 }

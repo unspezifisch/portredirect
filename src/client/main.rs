@@ -9,7 +9,9 @@ use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, error, info, span, Level};
+use std::time::Duration;
+use tokio::time::sleep;
+use tracing::{debug, error, info, span, warn, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -139,12 +141,26 @@ async fn main() -> Result<()> {
 }
 
 #[allow(unused)]
-async fn handle_quic_to_tcp(
-    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
-) -> Result<(), Error> {
+async fn handle_quic_to_tcp(mut conn: quinn::Incoming) -> Result<(), Error> {
     // Open a new QUIC stream
-    debug!("handle_quic_to_tcp stub");
+    debug!("Accepting server-initiated QUIC stream.");
+    let stream = conn.accept();
+    let stream = match stream {
+        Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+            warn!("stream closed");
+            return Ok(());
+        }
+        Err(e) => {
+            error!(error = %e, "stream error");
+            return Err(anyhow::Error::from(e));
+        }
+        Ok(s) => s,
+    };
 
+    loop {
+        debug!("stream still active");
+        sleep(Duration::from_secs(10)).await;
+    }
     /*
       // Forward TCP -> QUIC
       let tcp_to_quic = tokio::spawn(async move {

@@ -28,6 +28,7 @@ pub struct ClientConfig {
 
     pub local_socket: SocketAddr,
     pub remote_socket: SocketAddr,
+    pub connection_limit: Option<usize>,
 }
 
 impl ClientConfig {
@@ -44,16 +45,17 @@ impl ClientConfig {
             cert_file: config_dir.join("cert.der"),
             local_socket,
             remote_socket,
+            connection_limit: None,
         }
     }
 }
 
 pub async fn run_quic_client<F, Fut>(
     config: ClientConfig,
-    handle_stream_cb: F,
+    handle_connection: F,
 ) -> Result<(), Error>
 where
-    F: Fn((quinn::SendStream, quinn::RecvStream)) -> Fut + Send + Sync + 'static,
+    F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     // Load CA chain, or if none is given, load cert file.
@@ -61,7 +63,9 @@ where
     if let Some(ca_path) = config.ca_path {
         roots.add(CertificateDer::from(fs::read(ca_path)?))?;
     } else {
-        match fs::read(config.cert_file) {
+        let cert_file_result = fs::read(config.cert_file);
+
+        match cert_file_result {
             Ok(cert) => {
                 roots.add(CertificateDer::from(cert))?;
             }
@@ -145,29 +149,23 @@ where
     );
 
     // PR QUIC client side loop
-    loop {
-        let stream = conn.accept_bi().await;
-        let stream = match stream {
-            Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                info!("stream closed");
-                continue;
-            }
-            Err(e) => {
-                error!("stream error: {:?}", e);
-                continue;
-            }
-            Ok(s) => s,
-        };
-
-        let fut = handle_stream_cb(stream);
-        tokio::spawn(
-            async move {
+    while let Some(conn) = endpoint.accept().await {
+        if config
+            .connection_limit
+            .is_some_and(|n| endpoint.open_connections() >= n)
+        {
+            info!("refusing due to open connection limit");
+            conn.refuse();
+        } else {
+            info!("accepting connection");
+            let fut = handle_connection(conn);
+            tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("failed: {reason}", reason = e.to_string());
+                    error!("connection failed: {reason}", reason = e.to_string())
                 }
-            }
-            .instrument(info_span!("stream handler")),
-        );
+            });
+        }
     }
-}
 
+    Ok(())
+}

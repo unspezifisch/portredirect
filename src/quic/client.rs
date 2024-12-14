@@ -80,6 +80,10 @@ where
         .with_no_client_auth();
     client_crypto.alpn_protocols = ALPN_QUIC_PORTREDIRECT.iter().map(|&x| x.into()).collect();
 
+    let server_name_match = config
+        .remote_hostname_match
+        .unwrap_or_else(|| config.remote_socket.ip().to_string());
+
     // QUIC client setup.
     let client_config =
         quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
@@ -91,9 +95,14 @@ where
 
     // Connect.
     let start = Instant::now();
-    info!(cert_hostname_match=config.remote_hostname_match, remote=config.remote_socket.to_string(), "Connecting to PR QUIC Server");
+    info!(
+        server_name_match,
+        local = config.local_socket.to_string(),
+        remote = config.remote_socket.to_string(),
+        "Connecting to PR QUIC Server"
+    );
     let conn = endpoint
-        .connect(config.remote_socket, config.remote_hostname_match.unwrap().as_str())?
+        .connect(config.remote_socket, server_name_match.as_str())?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
     debug!("connected at {:?}", start.elapsed());

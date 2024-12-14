@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info, span, Level};
-use tracing_subscriber;
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

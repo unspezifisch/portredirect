@@ -227,7 +227,7 @@ pub fn generate_quic_cert(
         ),
         Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
             info!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name.into()]).unwrap();
+            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name]).unwrap();
             let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
             let cert = cert.cert.into();
             fs::create_dir_all(path).context("failed to create certificate directory")?;

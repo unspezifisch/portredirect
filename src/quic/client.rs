@@ -5,13 +5,9 @@
 // Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/client.rs
 
 // TODO import cleanup
-use anyhow::{anyhow, bail, Context, Error, Result};
-use quinn::crypto::rustls::QuicServerConfig;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, pin::Pin, str, sync::Arc};
-use tracing::{debug, error, info, instrument, warn, Span};
+use anyhow::{Error, Result};
+use std::{net::SocketAddr, path::PathBuf};
 
-use crate::get_config_dir;
 
 #[derive(Debug)]
 #[allow(unused)]

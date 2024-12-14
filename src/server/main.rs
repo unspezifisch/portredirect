@@ -2,16 +2,20 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::Result;
+use anyhow::{anyhow, Error, Result};
 use clap::{Parser, ValueEnum};
+use core::str;
 use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use quinn::Connection;
+use std::ascii;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, span, Level};
+use tokio::time::sleep;
+use tracing::{debug, error, info, instrument, span, Level};
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -169,7 +173,7 @@ async fn main() -> Result<()> {
 
         // Spawn the QUIC server
         tokio::spawn(async {
-            if let Err(e) = run_quic_server(config, handl).await {
+            if let Err(e) = run_quic_server(config, handle_quic_client_connection).await {
                 error!(error = %e, "QUIC thread error");
             }
         });
@@ -187,34 +191,48 @@ async fn main() -> Result<()> {
         debug!("New TCP connection from: {:?}", local_socket.peer_addr());
 
         if args.mode == Mode::DirectForwarding {
-            let stats = stats.clone();
             let remote_addr = remote_addr.clone();
+            let stats_clone = Arc::clone(&stats);
 
-            tokio::spawn(async move {
-                // Handle the connection.
-                if let Err(e) =
-                    handle_tcp_connection_redirect(local_socket, remote_addr, stats).await
-                {
-                    error!("Connection error: {}", e);
-                }
-            });
-        } else if args.mode == Mode::Quic {
             tokio::spawn(async move {
                 // Increment connection count.
                 {
-                    let mut stats = stats.lock().unwrap();
+                    let mut stats = stats_clone.lock().unwrap();
                     stats.connection_count += 1;
                 }
 
+                // Bridge data to outgoing TCP connection.
                 let start = Instant::now();
-                if let Err(e) = handle_tcp_to_quic(tcp_stream).await {
-                    eprintln!("Error handling TCP connection: {:?}", e);
+                if let Err(e) = handle_tcp_to_tcp(local_socket, remote_addr).await {
+                    error!("Error handling outgoing TCP connection: {:?}", e);
                 }
-                debug!("TCP connection terminated after {:?}", start.elapsed());
+                debug!("Outgoing TCP stream terminated after {:?}", start.elapsed());
 
                 // Decrement connection count.
                 {
-                    let mut stats = stats.lock().unwrap();
+                    let mut stats = stats_clone.lock().unwrap();
+                    stats.connection_count -= 1;
+                }
+            });
+        } else if args.mode == Mode::Quic {
+    let stats_clone = Arc::clone(&stats);
+            tokio::spawn(async move {
+                // Increment connection count.
+                {
+                    let mut stats = stats_clone.lock().unwrap();
+                    stats.connection_count += 1;
+                }
+
+                // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
+                let start = Instant::now();
+                if let Err(e) = handle_tcp_to_quic_stream(local_socket).await {
+                    error!("Error handling QUIC/TCP stream: {:?}", e);
+                }
+                debug!("QUIC/TCP stream terminated after {:?}", start.elapsed());
+
+                // Decrement connection count.
+                {
+                    let mut stats = stats_clone.lock().unwrap();
                     stats.connection_count -= 1;
                 }
             });
@@ -228,20 +246,16 @@ async fn main() -> Result<()> {
 ///
 /// # Arguments
 /// * `local_socket` - The accepted local socket.
-/// * `remote_addr` - The address of the remote server.
-/// * `stats` - Shared statistics for connection tracking.
-async fn handle_tcp_connection_redirect(
+/// * `remote_addr` - The address of the destination.
+async fn handle_tcp_to_tcp(
     local_socket: TcpStream,
     remote_addr: String,
-    stats: Arc<Mutex<ConnectionStats>>,
-) -> io::Result<()> {
+) -> Result<(), Error> {
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
     // Split the sockets into read and write halves
     let (mut local_read, mut local_write) = local_socket.into_split();
     let (mut remote_read, mut remote_write) = remote_socket.into_split();
-
-    let stats_clone = stats.clone();
 
     // Forward data from local to remote.
     let local_to_remote_task = tokio::spawn(async move {
@@ -250,15 +264,10 @@ async fn handle_tcp_connection_redirect(
             if bytes_read == 0 {
                 break;
             }
-            remote_write.write_all(&buffer[..bytes_read]).await?;
-
-            let mut stats = stats_clone.lock().unwrap();
-            stats.total_bytes += bytes_read as u64;
+            remote_write.write_all(&buffer[..bytes_read]).await;
         }
-        Ok::<(), io::Error>(())
     });
 
-    let stats_clone = stats.clone();
     // Forward data from remote to local.
     let remote_to_local_task = tokio::spawn(async move {
         let mut buffer = [0u8; 1024];
@@ -267,9 +276,6 @@ async fn handle_tcp_connection_redirect(
                 break;
             }
             local_write.write_all(&buffer[..bytes_read]).await?;
-
-            let mut stats = stats_clone.lock().unwrap();
-            stats.total_bytes += bytes_read as u64;
         }
         Ok::<(), io::Error>(())
     });
@@ -280,9 +286,9 @@ async fn handle_tcp_connection_redirect(
     Ok(())
 }
 
-// Handles incoming TCP connections.
+// Handles incoming TCP connections, forwards them to a QUIC stream.
 #[allow(unused)]
-async fn handle_tcp_to_quic(
+async fn handle_tcp_to_quic_stream(
     mut tcp_stream: tokio::net::TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open a new QUIC stream
@@ -327,9 +333,9 @@ async fn handle_tcp_to_quic(
     Ok(())
 }
 
-// Handles
+// Handles one PR QUIC client connection.
 #[instrument(skip(conn))]
-async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
+async fn handle_quic_client_connection(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
         debug!("QUIC connection established");
@@ -381,6 +387,6 @@ async fn handle_request_quic(
     send.write_all(&resp)
         .await
         .map_err(|e| anyhow!("failed to send response: {}", e))?;
- 
+
     Ok(())
 }

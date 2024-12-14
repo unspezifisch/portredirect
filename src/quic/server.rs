@@ -242,7 +242,7 @@ pub fn generate_quic_cert(
 }
 
 #[instrument(skip(config, handle_outgoing))]
-pub async fn run_quic_server(config: ServerConfig, handle_outgoing: F) -> Result<()>
+pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_outgoing: F) -> Result<()>
 where
     F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,

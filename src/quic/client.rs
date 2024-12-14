@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, info, info_span, warn, Instrument};
+use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
 
 use super::ALPN_QUIC_PORTREDIRECT;
 
@@ -50,14 +50,17 @@ impl ClientConfig {
     }
 }
 
+#[instrument(skip(config, handle_incoming))]
 pub async fn run_quic_client<F, Fut>(
     config: ClientConfig,
-    handle_connection: F,
+    handle_incoming: F,
 ) -> Result<(), Error>
 where
     F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
+    info!("Starting PR QUIC client setup");
+
     // Load CA chain, or if none is given, load cert file.
     let mut roots = rustls::RootCertStore::empty();
     if let Some(ca_path) = config.ca_path {
@@ -94,7 +97,7 @@ where
     let mut endpoint = quinn::Endpoint::client(config.local_socket)?;
     endpoint.set_default_client_config(client_config);
 
-    // Connect.
+    // Connect, or rather: establish tunnel.
     let start = Instant::now();
     info!(
         server_name_match,
@@ -108,7 +111,8 @@ where
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
     debug!("QUIC connected at {:?}", start.elapsed());
 
-    // Open AUTH channel. It's where we prove to the server that we know the PSK.
+    // Open AUTH channel. It's where we prove to the server that we know the PSK and thus are to be trusted.
+    // We already know we can trust the server because its TLS cert is signed by our CA.
     {
         let (mut send, mut recv) = conn
             .open_bi()
@@ -144,21 +148,31 @@ where
     }
 
     info!(
-        "PR QUIC connection to server established in {:?}.",
+        "PR QUIC connection established in {:?}.",
         start.elapsed()
     );
 
-    // PR QUIC client side loop
+    // PR QUIC client side loop:
+    // Handle incoming streams forever.
     while let Some(conn) = endpoint.accept().await {
         if config
             .connection_limit
             .is_some_and(|n| endpoint.open_connections() >= n)
         {
-            info!("refusing due to open connection limit");
+            warn!(
+                "Refusing connection: open connection limit ({}) reached",
+                config.connection_limit.unwrap()
+            );
             conn.refuse();
         } else {
-            info!("accepting connection");
-            let fut = handle_connection(conn);
+            let peer_info = format!(
+                "server: {} (validated: {})",
+                conn.remote_address(),
+                conn.remote_address_validated()
+            );
+            debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
+
+            let fut = handle_incoming(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("connection failed: {reason}", reason = e.to_string())
@@ -166,6 +180,11 @@ where
             });
         }
     }
+
+    info!(
+        "PR QUIC connection terminated after {:?}.",
+        start.elapsed()
+    );
 
     Ok(())
 }

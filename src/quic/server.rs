@@ -4,10 +4,10 @@
 // Based on: Quinn example code (originally licensed under Apache-2.0/MIT)
 // Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
+use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn, Span};
 
 use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
@@ -241,11 +241,15 @@ pub fn generate_quic_cert(
     Ok((vec![cert], key))
 }
 
-#[allow(unused)]
-#[instrument(skip(config))]
-pub async fn run_quic_server(config: ServerConfig) -> Result<()> {
-    info!("Starting QUIC server setup");
+#[instrument(skip(config, handle_outgoing))]
+pub async fn run_quic_server(config: ServerConfig, handle_outgoing: F) -> Result<()>
+where
+    F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
+{
+    info!("Starting PR QUIC server setup");
 
+    // Load or generate certificate.
     let (cert_chain, key_der) = load_or_generate_quic_cert(
         config.cert_hostname,
         config.key_file.clone(),
@@ -253,26 +257,34 @@ pub async fn run_quic_server(config: ServerConfig) -> Result<()> {
     )
     .context("loading or generating cert")?;
 
-    info!("Configuring rustls server ({} certs, key: {:?})", cert_chain.len(), key_der);
+    info!(
+        "Configuring rustls server ({} certs, key: {:?})",
+        cert_chain.len(),
+        key_der
+    );
 
+    // Crypto setup.
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert_chain, key_der)
         .context("rustls ServerConfig builder")?;
     server_crypto.alpn_protocols = ALPN_QUIC_PORTREDIRECT.iter().map(|&x| x.into()).collect();
 
+    // QUIC server setup.
     let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
+    // Start QUIC server listener.
     info!(listen_addr = %config.listen, "Binding QUIC endpoint");
     let endpoint = quinn::Endpoint::server(server_config, config.listen)?;
 
+    // PR QUIC server side loop:
+    // Handle incoming QUIC connections forever.
+    let start = Instant::now();
     info!("QUIC server is ready and accepting connections");
     while let Some(conn) = endpoint.accept().await {
-        let conn_span = Span::current();
-
         if config
             .connection_limit
             .is_some_and(|n| endpoint.open_connections() >= n)
@@ -294,75 +306,18 @@ pub async fn run_quic_server(config: ServerConfig) -> Result<()> {
                 conn.remote_address(),
                 conn.remote_address_validated()
             );
-            debug!(peer = %peer_info, "Accepting new QUIC connection");
+            debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 
-            tokio::spawn(async move {
-                if let Err(e) = handle_connection_quic(conn).await {
-                    error!(error = %e, peer = %peer_info, "Error during QUIC connection");
-                }
-            });
-        }
-    }
-
-    Ok(())
-}
-
-#[allow(unused)]
-#[instrument(skip(conn))]
-async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
-    let connection = conn.await?;
-    async {
-        debug!("QUIC connection established");
-
-        // Each stream initiated by the client constitutes a new request.
-        loop {
-            let stream = connection.accept_bi().await;
-            let stream = match stream {
-                Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    debug!("QUIC connection closed");
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(s) => s,
-            };
-            let fut = handle_request_quic(stream);
+            let fut = handle_outgoing(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("failed: {reason}", reason = e.to_string());
+                    error!("connection failed: {reason}", reason = e.to_string())
                 }
             });
         }
     }
-    .await?;
-    Ok(())
-}
 
-#[allow(unused)]
-#[instrument(skip(send, recv))]
-async fn handle_request_quic(
-    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
-) -> Result<()> {
-    let req = recv
-        .read_to_end(64 * 1024)
-        .await
-        .map_err(|e| anyhow!("failed reading request: {}", e))?;
-    let mut escaped = String::new();
-    for &x in &req[..] {
-        let part = ascii::escape_default(x).collect::<Vec<_>>();
-        escaped.push_str(str::from_utf8(&part).unwrap());
-    }
-    debug!(escaped=%escaped);
+    info!("PR QUIC server terminated after {:?}.", start.elapsed());
 
-    // Execute the request
-    let resp = b"HELLO I AM PRSERVER, WHO ARE YOU?".to_vec();
-    // Write the response
-    send.write_all(&resp)
-        .await
-        .map_err(|e| anyhow!("failed to send response: {}", e))?;
-    // Gracefully terminate the stream
-    send.finish().unwrap();
-    debug!("complete");
     Ok(())
 }

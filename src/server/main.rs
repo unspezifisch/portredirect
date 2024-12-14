@@ -161,18 +161,21 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let config =
-            ServerConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
+        let config = ServerConfig::create_default_config(
+            config_dir,
+            args.quic_cert_hostname,
+            quic_bind_addr,
+        );
 
         // Spawn the QUIC server
         tokio::spawn(async {
-            if let Err(e) = run_quic_server(config).await {
+            if let Err(e) = run_quic_server(config, handl).await {
                 error!(error = %e, "QUIC thread error");
             }
         });
     }
 
-    // Accept incoming connections.
+    // Handle incoming TCP connections forever.
     loop {
         let (local_socket, _) = match listener.accept().await {
             Ok(listener) => listener,
@@ -182,12 +185,6 @@ async fn main() -> Result<()> {
             }
         };
         debug!("New TCP connection from: {:?}", local_socket.peer_addr());
-
-        // Increment connection count.
-        {
-            let mut stats = stats.lock().unwrap();
-            stats.connection_count += 1;
-        }
 
         if args.mode == Mode::DirectForwarding {
             let stats = stats.clone();
@@ -202,22 +199,27 @@ async fn main() -> Result<()> {
                 }
             });
         } else if args.mode == Mode::Quic {
-            /* TODO get correct quic connection
-            let quic_connection = quic_connection.clone();
-
             tokio::spawn(async move {
-                if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
+                // Increment connection count.
+                {
+                    let mut stats = stats.lock().unwrap();
+                    stats.connection_count += 1;
+                }
+
+                let start = Instant::now();
+                if let Err(e) = handle_tcp_to_quic(tcp_stream).await {
                     eprintln!("Error handling TCP connection: {:?}", e);
                 }
-            })*/
+                debug!("TCP connection terminated after {:?}", start.elapsed());
+
+                // Decrement connection count.
+                {
+                    let mut stats = stats.lock().unwrap();
+                    stats.connection_count -= 1;
+                }
+            });
         } else {
             unreachable!();
-        }
-
-        // Decrement connection count.
-        {
-            let mut stats = stats.lock().unwrap();
-            stats.connection_count -= 1;
         }
     }
 }
@@ -278,14 +280,19 @@ async fn handle_tcp_connection_redirect(
     Ok(())
 }
 
+// Handles incoming TCP connections.
 #[allow(unused)]
 async fn handle_tcp_to_quic(
     mut tcp_stream: tokio::net::TcpStream,
-    quic_connection: Connection,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open a new QUIC stream
-    let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
+    //let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
     debug!("Opened QUIC stream for TCP forwarding");
+
+    loop {
+        debug!("handle_tcp_to_quic");
+        sleep(Duration::from_secs(10)).await;
+    }
 
     /* TODO implement forwarding
       // Forward TCP -> QUIC
@@ -317,5 +324,63 @@ async fn handle_tcp_to_quic(
       tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
     */
     debug!("Closed QUIC stream for TCP connection");
+    Ok(())
+}
+
+// Handles
+#[instrument(skip(conn))]
+async fn handle_connection_quic(conn: quinn::Incoming) -> Result<()> {
+    let connection = conn.await?;
+    async {
+        debug!("QUIC connection established");
+
+        // Each stream initiated by the client constitutes a new request.
+        loop {
+            let stream = connection.accept_bi().await;
+            let stream = match stream {
+                Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+                    debug!("QUIC connection closed");
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+                Ok(s) => s,
+            };
+            let fut = handle_request_quic(stream);
+            tokio::spawn(async move {
+                if let Err(e) = fut.await {
+                    error!("failed: {reason}", reason = e.to_string());
+                }
+            });
+        }
+    }
+    .await?;
+    Ok(())
+}
+
+#[allow(unused)]
+#[instrument(skip(send, recv))]
+async fn handle_request_quic(
+    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
+) -> Result<()> {
+    let req = recv
+        .read_to_end(64 * 1024)
+        .await
+        .map_err(|e| anyhow!("failed reading request: {}", e))?;
+    let mut escaped = String::new();
+    for &x in &req[..] {
+        let part = ascii::escape_default(x).collect::<Vec<_>>();
+        escaped.push_str(str::from_utf8(&part).unwrap());
+    }
+    debug!(escaped=%escaped);
+
+    // Execute the request
+    let resp = b"HELLO I AM PRSERVER, WHO ARE YOU?".to_vec();
+    // Write the response
+    send.write_all(&resp)
+        .await
+        .map_err(|e| anyhow!("failed to send response: {}", e))?;
+ 
     Ok(())
 }

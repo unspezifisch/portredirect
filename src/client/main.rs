@@ -11,7 +11,7 @@ use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{debug, error, info, instrument, span, warn, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -140,7 +140,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+// Handles incoming QUIC streams, forwards them to their destination.
 #[allow(unused)]
+#[instrument[skip(conn)]]
 async fn handle_quic_to_tcp(mut conn: quinn::Incoming) -> Result<(), Error> {
     // Open a new QUIC stream
     debug!("Accepting server-initiated QUIC stream.");
@@ -158,7 +160,7 @@ async fn handle_quic_to_tcp(mut conn: quinn::Incoming) -> Result<(), Error> {
     };
 
     loop {
-        debug!("stream still active");
+        debug!("handle_quic_to_tcp");
         sleep(Duration::from_secs(10)).await;
     }
     /*

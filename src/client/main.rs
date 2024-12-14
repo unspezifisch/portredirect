@@ -61,34 +61,19 @@ async fn main() -> Result<()> {
     let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
 
-    if args.mode == Mode::DirectForwarding {
-        // Ensure required arguments are provided
-        match (args.remote_host.as_ref(), args.remote_port) {
-            (Some(host), Some(port)) => {
-                remote_addr = format!("{}:{}", host, port);
-            }
-            _ => {
-                error!("Error: --remote-host and --remote-port must be specified in DirectForwarding mode.");
-                std::process::exit(1);
-            }
+    match (args.quic_server_host, args.quic_server_port, args.quic_psk) {
+        (quic_server_host, Some(quic_server_port), Some(_)) => {
+            // Parameters are complete.
+            quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
+                .to_socket_addrs()
+                .expect("Invalid host or port")
+                .next()
+                .expect("Unable to resolve address");
         }
-    } else if args.mode == Mode::Quic {
-        match (args.quic_server_host, args.quic_server_port, args.quic_psk) {
-            (quic_server_host, Some(quic_server_port), Some(_)) => {
-                // Parameters are complete.
-                quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
-                    .to_socket_addrs()
-                    .expect("Invalid host or port")
-                    .next()
-                    .expect("Unable to resolve address");
-            }
-            _ => {
-                error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
-                std::process::exit(1);
-            }
+        _ => {
+            error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
+            std::process::exit(1);
         }
-    } else {
-        unreachable!();
     }
 
     // Shared state for connection statistics.
@@ -118,33 +103,22 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Create local listener.
-    let listener = TcpListener::bind(local_addr.clone()).await.map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to bind to {}: {}", local_addr, e),
-        )
-    })?;
-    info!("TCP listening on {}", listener.local_addr()?);
+    // HACK Create QUIC server if needed.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
-    // Create QUIC server if needed.
-    if args.mode == Mode::Quic {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install rustls crypto provider");
+    info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        info!("QUIC listening on {}", quic_bind_addr.clone());
+    let config =
+        QuicConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
 
-        let config =
-            QuicConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
-
-        // Spawn the QUIC server
-        tokio::spawn(async {
-            if let Err(e) = run_quic_server(config).await {
-                error!(error = %e, "QUIC thread error");
-            }
-        });
-    }
+    // Spawn the QUIC server
+    tokio::spawn(async {
+        if let Err(e) = run_quic_server(config).await {
+            error!(error = %e, "QUIC thread error");
+        }
+    });
 
     // Accept incoming connections.
     loop {
@@ -163,30 +137,14 @@ async fn main() -> Result<()> {
             stats.connection_count += 1;
         }
 
-        if args.mode == Mode::DirectForwarding {
-            let stats = stats.clone();
-            let remote_addr = remote_addr.clone();
+        /* TODO client glue
+        let quic_connection = quic_connection.clone();
 
-            tokio::spawn(async move {
-                // Handle the connection.
-                if let Err(e) =
-                    handle_tcp_connection_redirect(local_socket, remote_addr, stats).await
-                {
-                    error!("Connection error: {}", e);
-                }
-            });
-        } else if args.mode == Mode::Quic {
-            /*
-            let quic_connection = quic_connection.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
-                    eprintln!("Error handling TCP connection: {:?}", e);
-                }
-            })*/
-        } else {
-            unreachable!();
-        }
+        tokio::spawn(async move {
+            if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
+                eprintln!("Error handling TCP connection: {:?}", e);
+            }
+        })*/
 
         // Decrement connection count.
         {
@@ -194,62 +152,6 @@ async fn main() -> Result<()> {
             stats.connection_count -= 1;
         }
     }
-}
-
-/// Handles a single connection by forwarding traffic between the local and remote sockets.
-///
-/// # Arguments
-/// * `local_socket` - The accepted local socket.
-/// * `remote_addr` - The address of the remote server.
-/// * `stats` - Shared statistics for connection tracking.
-async fn handle_tcp_connection_redirect(
-    local_socket: TcpStream,
-    remote_addr: String,
-    stats: Arc<Mutex<ConnectionStats>>,
-) -> io::Result<()> {
-    let remote_socket = TcpStream::connect(remote_addr).await?;
-
-    // Split the sockets into read and write halves
-    let (mut local_read, mut local_write) = local_socket.into_split();
-    let (mut remote_read, mut remote_write) = remote_socket.into_split();
-
-    let stats_clone = stats.clone();
-
-    // Forward data from local to remote.
-    let local_to_remote_task = tokio::spawn(async move {
-        let mut buffer = [0u8; 1024];
-        while let Ok(bytes_read) = local_read.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break;
-            }
-            remote_write.write_all(&buffer[..bytes_read]).await?;
-
-            let mut stats = stats_clone.lock().unwrap();
-            stats.total_bytes += bytes_read as u64;
-        }
-        Ok::<(), io::Error>(())
-    });
-
-    let stats_clone = stats.clone();
-    // Forward data from remote to local.
-    let remote_to_local_task = tokio::spawn(async move {
-        let mut buffer = [0u8; 1024];
-        while let Ok(bytes_read) = remote_read.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break;
-            }
-            local_write.write_all(&buffer[..bytes_read]).await?;
-
-            let mut stats = stats_clone.lock().unwrap();
-            stats.total_bytes += bytes_read as u64;
-        }
-        Ok::<(), io::Error>(())
-    });
-
-    // Wait for both tasks to complete.
-    let _ = tokio::try_join!(local_to_remote_task, remote_to_local_task)?;
-
-    Ok(())
 }
 
 #[allow(unused)]

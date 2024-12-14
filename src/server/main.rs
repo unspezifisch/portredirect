@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
                 }
             });
         } else if args.mode == Mode::Quic {
-            /*
+            /* TODO get correct quic connection
             let quic_connection = quic_connection.clone();
 
             tokio::spawn(async move {
@@ -284,7 +284,7 @@ async fn handle_tcp_to_quic(
     let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
     debug!("Opened QUIC stream for TCP forwarding");
 
-    /*
+    /* TODO implement forwarding
       // Forward TCP -> QUIC
       let tcp_to_quic = tokio::spawn(async move {
           let mut buf = [0; 1024];

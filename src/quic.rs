@@ -3,9 +3,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
-use tracing::{debug, error, info, instrument, warn, Instrument, Span};
+use tracing::{debug, error, info, instrument, warn, Span};
 
-use portredirect::get_config_dir;
+use crate::get_config_dir;
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -38,7 +38,7 @@ impl QuicConfig {
 }
 
 #[allow(unused)]
-pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"]; // HACK this should be our own protocol ID
+pub const ALPN_QUIC_PORTREDIRECT: &[&[u8]] = &[b"pr-1"]; // port redirect protocol v1
 
 /// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
 ///
@@ -257,7 +257,7 @@ pub async fn run_quic_server(config: QuicConfig) -> Result<()> {
         .with_no_client_auth()
         .with_single_cert(cert_chain, key_der)
         .context("rustls ServerConfig builder")?;
-    server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
+    server_crypto.alpn_protocols = ALPN_QUIC_PORTREDIRECT.iter().map(|&x| x.into()).collect();
 
     let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));

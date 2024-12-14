@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use anyhow::{Result, Context};
 
+pub mod quic;
+
 /// Returns the path to the configuration directory, creating it if necessary.
 pub fn get_config_dir() -> Result<PathBuf> {
     let mut config_dir =

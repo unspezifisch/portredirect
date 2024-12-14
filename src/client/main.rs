@@ -1,16 +1,14 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use portredirect::get_config_dir;
-use quic::{run_quic_server, QuicConfig};
+use portredirect::quic::{run_quic_server, QuicConfig};
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, span, Instrument, Level};
+use tracing::{debug, error, info, span, Level};
 use tracing_subscriber;
-
-mod quic;
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -73,7 +71,7 @@ async fn main() -> Result<()> {
         .with_line_number(true)
         .init();
 
-    let root_span = span!(Level::INFO, "app_main");
+    let root_span = span!(Level::INFO, "prclient_main");
     let _enter = root_span.enter();
 
     // Get or create config directory.

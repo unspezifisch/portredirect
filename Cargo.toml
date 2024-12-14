@@ -18,3 +18,11 @@ tracing-subscriber = "*"
 
 [dev-dependencies]
 tempfile = "*"
+
+[[bin]]
+name = "portredirect_server"
+path = "src/server/main.rs"
+
+[[bin]]
+name = "portredirect_client"
+path = "src/client/client.rs"

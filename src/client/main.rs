@@ -52,7 +52,6 @@ struct Args {
 /// Data structure to hold connection statistics.
 struct ConnectionStats {
     connection_count: usize,
-    total_bytes: u64,
 }
 
 #[tokio::main]
@@ -94,29 +93,27 @@ async fn main() -> Result<()> {
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
         connection_count: 0,
-        total_bytes: 0,
     }));
 
     // Spawn a task to periodically print stats.
-    let stats_clone = stats.clone();
-    tokio::spawn(async move {
-        use tokio::time::{sleep, Duration};
-        let mut printed_once = false;
-        let mut previous_total_bytes = 0u64;
+    {
+        let stats_clone = Arc::clone(&stats);
+        tokio::spawn(async move {
+            use tokio::time::{sleep, Duration};
+            let mut printed_once = false;
+            let mut previous_connection_count = 0;
 
-        loop {
-            sleep(Duration::from_secs(1)).await;
-            let stats = stats_clone.lock().unwrap();
-            if stats.total_bytes != previous_total_bytes || !printed_once {
-                info!(
-                    "Active connections: {}, Total data: {} bytes",
-                    stats.connection_count, stats.total_bytes
-                );
-                previous_total_bytes = stats.total_bytes;
-                printed_once = true;
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                let stats = stats_clone.lock().unwrap();
+                if previous_connection_count != stats.connection_count || !printed_once {
+                    info!("Active connections: {}", stats.connection_count);
+                    previous_connection_count = stats.connection_count;
+                    printed_once = true;
+                }
             }
-        }
-    });
+        });
+    }
 
     // Create QUIC client.
     rustls::crypto::ring::default_provider()

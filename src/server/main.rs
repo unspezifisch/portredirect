@@ -2,7 +2,7 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use clap::{Parser, ValueEnum};
 use core::str;
 use portredirect::get_config_dir;
@@ -67,7 +67,6 @@ struct Args {
 /// Data structure to hold connection statistics.
 struct ConnectionStats {
     connection_count: usize,
-    total_bytes: u64,
 }
 
 #[tokio::main]
@@ -124,7 +123,6 @@ async fn main() -> Result<()> {
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
         connection_count: 0,
-        total_bytes: 0,
     }));
 
     // Spawn a task to periodically print stats.
@@ -132,17 +130,14 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         use tokio::time::{sleep, Duration};
         let mut printed_once = false;
-        let mut previous_total_bytes = 0u64;
+        let mut previous_connection_count = 0;
 
         loop {
             sleep(Duration::from_secs(1)).await;
             let stats = stats_clone.lock().unwrap();
-            if stats.total_bytes != previous_total_bytes || !printed_once {
-                info!(
-                    "Active connections: {}, Total data: {} bytes",
-                    stats.connection_count, stats.total_bytes
-                );
-                previous_total_bytes = stats.total_bytes;
+            if previous_connection_count != stats.connection_count || !printed_once {
+                info!("Active connections: {}", stats.connection_count);
+                previous_connection_count = stats.connection_count;
                 printed_once = true;
             }
         }
@@ -215,7 +210,7 @@ async fn main() -> Result<()> {
                 }
             });
         } else if args.mode == Mode::Quic {
-    let stats_clone = Arc::clone(&stats);
+            let stats_clone = Arc::clone(&stats);
             tokio::spawn(async move {
                 // Increment connection count.
                 {
@@ -247,10 +242,7 @@ async fn main() -> Result<()> {
 /// # Arguments
 /// * `local_socket` - The accepted local socket.
 /// * `remote_addr` - The address of the destination.
-async fn handle_tcp_to_tcp(
-    local_socket: TcpStream,
-    remote_addr: String,
-) -> Result<(), Error> {
+async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Result<(), Error> {
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
     // Split the sockets into read and write halves
@@ -336,38 +328,38 @@ async fn handle_tcp_to_quic_stream(
 // Handles one PR QUIC client connection.
 #[instrument(skip(conn))]
 async fn handle_quic_client_connection(conn: quinn::Incoming) -> Result<()> {
-    let connection = conn.await?;
-    async {
-        debug!("QUIC connection established");
+    let connection = conn
+        .await
+        .context("accepting incoming quic client connection")?;
+    debug!("QUIC connection established");
 
-        // Each stream initiated by the client constitutes a new request.
-        loop {
-            let stream = connection.accept_bi().await;
-            let stream = match stream {
-                Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    debug!("QUIC connection closed");
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(s) => s,
-            };
-            let fut = handle_request_quic(stream);
-            tokio::spawn(async move {
-                if let Err(e) = fut.await {
-                    error!("failed: {reason}", reason = e.to_string());
-                }
-            });
+    // Each stream initiated by the client constitutes a new request.
+    loop {
+        match connection.accept_bi().await {
+            Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+                debug!("QUIC connection closed by application");
+                break;
+            }
+            Err(e) => {
+                error!("Error accepting stream: {:?}", e);
+                return Err(e.into());
+            }
+            Ok(stream) => {
+                tokio::spawn(async move {
+                    if let Err(e) = handle_pr_meta_channel(stream).await {
+                        error!("QUIC client handler failed: {reason}", reason = e.to_string());
+                    }
+                });
+            }
         }
     }
-    .await?;
+
     Ok(())
 }
 
 #[allow(unused)]
 #[instrument(skip(send, recv))]
-async fn handle_request_quic(
+async fn handle_pr_meta_channel(
     (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
     let req = recv

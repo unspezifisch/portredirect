@@ -3,7 +3,7 @@
 // License: GPL-3.0-only
 
 // TODO import cleanup 2
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use clap::Parser;
 use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
@@ -18,21 +18,29 @@ struct Args {
     #[clap(long)]
     destination_host: String,
 
-    /// Destination port.
+    /// Destination port (currently TCP only).
     #[clap(long)]
     destination_port: u16,
 
-    /// QUIC server listener host.
+    /// QUIC connection remote host (server).
     #[clap(long)]
-    quic_server_host: String,
+    quic_remote_host: String,
 
-    /// QUIC server listener port.
+    /// QUIC connection remote port (server).
     #[clap(long)]
-    quic_server_port: u16,
+    quic_remote_port: u16,
 
-    /// QUIC server hostname override for Subject Alt Name match in TLS cert.
+    /// QUIC connection local host to bind to (client).
+    #[clap(long, default_value = "0.0.0.0")]
+    quic_local_host: String,
+
+    /// QUIC connection local port to bind to (client).
+    #[clap(long, default_value = "0")]
+    quic_local_port: u16,
+
+    /// QUIC remote hostname override for Subject Alt Name match in TLS cert.
     #[clap(long)]
-    quic_server_hostname_match: Option<String>,
+    quic_remote_hostname_match: Option<String>,
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
@@ -62,14 +70,24 @@ async fn main() -> Result<()> {
 
     // Parse args.
     let args = Args::parse();
+    // Target of "tunneled" TCP connections.
     let destination_addr = format!("{}:{}", args.destination_host, args.destination_port);
-    let quic_bind_addr = format!("{}:{}", args.quic_server_host, args.quic_server_port)
+    // Local UDP bind address.
+    let quic_local_addr = format!("{}:{}", args.quic_local_host, args.quic_local_port)
         .to_socket_addrs()
+        .context("constructing QUIC local address")
+        .expect("Invalid host or port")
+        .next()
+        .expect("Unable to resolve address");
+    // Remote UDP server address.
+    let quic_remote_addr = format!("{}:{}", args.quic_remote_host, args.quic_remote_port)
+        .to_socket_addrs()
+        .context("constructing QUIC remote address")
         .expect("Invalid host or port")
         .next()
         .expect("Unable to resolve address");
 
-    info!(redirect_destination=%destination_addr, quic_server=%quic_bind_addr, "Initializing Client");
+    info!(destination=%destination_addr, local=%quic_local_addr, remote=%quic_remote_addr, "Initializing QUIC Client");
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -103,12 +121,13 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    info!("QUIC connecting to {}", quic_bind_addr.clone());
+    info!("QUIC connecting to {}", quic_remote_addr.clone());
 
     let config = ClientConfig::create_default_config(
         config_dir,
-        args.quic_server_hostname_match,
-        quic_bind_addr,
+        quic_local_addr,
+        quic_remote_addr,
+        args.quic_remote_hostname_match,
     );
 
     // Spawn the QUIC client

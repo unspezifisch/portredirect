@@ -10,7 +10,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc};
 use tracing::{debug, error, info, instrument, warn, Span};
 
-use crate::get_config_dir;
+use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -41,8 +41,6 @@ impl ServerConfig {
         }
     }
 }
-#[allow(unused)]
-pub const ALPN_QUIC_PORTREDIRECT: &[&[u8]] = &[b"pr-1"]; // port redirect protocol v1
 
 /// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
 ///
@@ -358,7 +356,7 @@ async fn handle_request_quic(
     debug!(escaped=%escaped);
 
     // Execute the request
-    let resp = vec![0x41, 0x42, 0x43];
+    let resp = b"HELLO I AM PRSERVER, WHO ARE YOU?".to_vec();
     // Write the response
     send.write_all(&resp)
         .await

@@ -10,51 +10,28 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info, span, Level};
 use tracing_subscriber;
 
-/// Modes of operation for the port redirector.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum Mode {
-    Quic,
-    DirectForwarding,
-}
-
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
 struct Args {
-    /// Local host to bind the listener.
+    /// Destination host for data coming from QUIC connections.
     #[clap(long)]
-    local_host: String,
+    destination_host: String,
 
-    /// Local port to bind the listener.
+    /// Destination port.
     #[clap(long)]
-    local_port: u16,
-
-    /// Remote host to forward traffic to.
-    #[clap(long)]
-    remote_host: Option<String>,
-
-    /// Remote port to forward traffic to.
-    #[clap(long)]
-    remote_port: Option<u16>,
+    destination_port: u16,
 
     /// QUIC server listener host.
     #[clap(long, default_value = "127.0.0.1")]
     quic_server_host: String,
 
     /// QUIC server listener port.
-    #[clap(long)]
-    quic_server_port: Option<u16>,
-
-    /// QUIC server certificate Subject Alt Name.
-    #[clap(long, default_value = "localhost")]
-    quic_cert_hostname: String,
+    #[clap(long, default_value = "4433")]
+    quic_server_port: u16,
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
     quic_psk: Option<String>,
-
-    /// Mode of operation: quic or direct-forwarding.
-    #[clap(long, value_enum)]
-    mode: Mode,
 }
 
 /// Data structure to hold connection statistics.

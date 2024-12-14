@@ -22,7 +22,8 @@ RUST_LOG=tracing=debug cargo run --bin portredirect_client -- --destination-host
 
 ## Limitations
 
-- Currently IPv4-only
+- Currently IPv4-only, TCP-only
+- Currently 1 server, 1 client in a 1:1 QUIC connection
 
 ## License
 

@@ -4,16 +4,12 @@
 
 // TODO import cleanup 2
 use anyhow::{Error, Result};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
-use quinn::Connection;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info, span, Level};
-use tracing_subscriber;
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]

@@ -1,4 +1,9 @@
-// based on https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
+// PortRedirector-RS Common Server Code
+//
+// License: GPL-3.0-only
+// Based on: Quinn example code (originally licensed under Apache-2.0/MIT)
+// Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
+
 use anyhow::{anyhow, bail, Context, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -9,7 +14,7 @@ use crate::get_config_dir;
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct QuicConfig {
+pub struct ServerConfig {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
     pub key_file: PathBuf,
@@ -19,14 +24,14 @@ pub struct QuicConfig {
     pub connection_limit: Option<usize>,
 }
 
-impl QuicConfig {
+impl ServerConfig {
     #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
         cert_alt_name: String,
         bind_socket: SocketAddr,
     ) -> Self {
-        QuicConfig {
+        ServerConfig {
             cert_hostname: cert_alt_name,
             cert_file: config_dir.join("cert.der"),
             key_file: config_dir.join("key.der"),
@@ -36,7 +41,6 @@ impl QuicConfig {
         }
     }
 }
-
 #[allow(unused)]
 pub const ALPN_QUIC_PORTREDIRECT: &[&[u8]] = &[b"pr-1"]; // port redirect protocol v1
 
@@ -241,7 +245,7 @@ pub fn generate_quic_cert(
 
 #[allow(unused)]
 #[instrument(skip(config))]
-pub async fn run_quic_server(config: QuicConfig) -> Result<()> {
+pub async fn run_quic_server(config: ServerConfig) -> Result<()> {
     info!("Starting QUIC server setup");
 
     let (cert_chain, key_der) = load_or_generate_quic_cert(

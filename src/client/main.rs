@@ -1,7 +1,12 @@
-use anyhow::Result;
+// PortRedirector-RS Client
+//
+// License: GPL-3.0-only
+
+// TODO import cleanup 2
+use anyhow::{Error, Result};
 use clap::{Parser, ValueEnum};
 use portredirect::get_config_dir;
-use portredirect::quic::{run_quic_server, QuicConfig};
+use portredirect::quic::client::{run_quic_client, ClientConfig};
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
@@ -22,12 +27,16 @@ struct Args {
     destination_port: u16,
 
     /// QUIC server listener host.
-    #[clap(long, default_value = "127.0.0.1")]
+    #[clap(long)]
     quic_server_host: String,
 
     /// QUIC server listener port.
-    #[clap(long, default_value = "4433")]
+    #[clap(long)]
     quic_server_port: u16,
+
+    /// QUIC server hostname override for Subject Alt Name match in TLS cert.
+    #[clap(long)]
+    quic_server_hostname_match: Option<String>,
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
@@ -57,24 +66,14 @@ async fn main() -> Result<()> {
 
     // Parse args.
     let args = Args::parse();
-    let mut remote_addr = String::new();
-    let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
-    let local_addr = format!("{}:{}", args.local_host, args.local_port);
+    let destination_addr = format!("{}:{}", args.destination_host, args.destination_port);
+    let quic_bind_addr = format!("{}:{}", args.quic_server_host, args.quic_server_port)
+        .to_socket_addrs()
+        .expect("Invalid host or port")
+        .next()
+        .expect("Unable to resolve address");
 
-    match (args.quic_server_host, args.quic_server_port, args.quic_psk) {
-        (quic_server_host, Some(quic_server_port), Some(_)) => {
-            // Parameters are complete.
-            quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
-                .to_socket_addrs()
-                .expect("Invalid host or port")
-                .next()
-                .expect("Unable to resolve address");
-        }
-        _ => {
-            error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
-            std::process::exit(1);
-        }
-    }
+    info!(redirect_destination=%destination_addr, quic_server=%quic_bind_addr, "Initializing Client");
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -103,65 +102,35 @@ async fn main() -> Result<()> {
         }
     });
 
-    // HACK Create QUIC server if needed.
+    // Create QUIC client.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    info!("QUIC listening on {}", quic_bind_addr.clone());
+    info!("QUIC connecting to {}", quic_bind_addr.clone());
 
-    let config =
-        QuicConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
+    let config = ClientConfig::create_default_config(
+        config_dir,
+        args.quic_server_hostname_match,
+        quic_bind_addr,
+    );
 
-    // Spawn the QUIC server
-    tokio::spawn(async {
-        if let Err(e) = run_quic_server(config).await {
-            error!(error = %e, "QUIC thread error");
-        }
-    });
-
-    // Accept incoming connections.
-    loop {
-        let (local_socket, _) = match listener.accept().await {
-            Ok(listener) => listener,
-            Err(e) => {
-                eprintln!("Failed to accept connection: {}", e);
-                continue;
-            }
-        };
-        debug!("New TCP connection from: {:?}", local_socket.peer_addr());
-
-        // Increment connection count.
-        {
-            let mut stats = stats.lock().unwrap();
-            stats.connection_count += 1;
-        }
-
-        /* TODO client glue
-        let quic_connection = quic_connection.clone();
-
-        tokio::spawn(async move {
-            if let Err(e) = handle_tcp_to_quic(tcp_stream, quic_connection).await {
-                eprintln!("Error handling TCP connection: {:?}", e);
-            }
-        })*/
-
-        // Decrement connection count.
-        {
-            let mut stats = stats.lock().unwrap();
-            stats.connection_count -= 1;
-        }
+    // Spawn the QUIC client
+    if let Err(e) = run_quic_client(config, handle_quic_to_tcp).await {
+        error!(error = %e, "QUIC client thread error");
     }
+
+    Ok(())
 }
 
 #[allow(unused)]
-async fn handle_tcp_to_quic(
+async fn handle_quic_to_tcp(
     mut tcp_stream: tokio::net::TcpStream,
-    quic_connection: Connection,
-) -> Result<(), Box<dyn std::error::Error>> {
+    quic_connection: quinn::Connection,
+) -> Result<(), Error> {
     // Open a new QUIC stream
     let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
-    debug!("Opened QUIC stream for TCP forwarding");
+    debug!("handle_quic_to_tcp stub");
 
     /*
       // Forward TCP -> QUIC

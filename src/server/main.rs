@@ -1,7 +1,11 @@
+// PortRedirector-RS Server
+//
+// License: GPL-3.0-only
+
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use portredirect::get_config_dir;
-use portredirect::quic::{run_quic_server, QuicConfig};
+use portredirect::quic::server::{run_quic_server, ServerConfig};
 use quinn::Connection;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
@@ -159,7 +163,7 @@ async fn main() -> Result<()> {
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
         let config =
-            QuicConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
+            ServerConfig::create_default_config(config_dir, args.quic_cert_hostname, quic_bind_addr);
 
         // Spawn the QUIC server
         tokio::spawn(async {

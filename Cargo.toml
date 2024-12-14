@@ -25,4 +25,4 @@ path = "src/server/main.rs"
 
 [[bin]]
 name = "portredirect_client"
-path = "src/client/client.rs"
+path = "src/client/main.rs"

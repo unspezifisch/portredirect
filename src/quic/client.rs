@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 
 use super::ALPN_QUIC_PORTREDIRECT;
 
@@ -50,11 +50,11 @@ impl ClientConfig {
 
 pub async fn run_quic_client<F, Fut>(
     config: ClientConfig,
-    callback: F,
-) -> Result<(), Box<dyn std::error::Error>>
+    handle_stream_cb: F,
+) -> Result<(), Error>
 where
-    F: Fn(tokio::net::TcpStream, quinn::Connection) -> Fut + Send + Sync + 'static,
-    Fut: std::future::Future<Output = Result<(), Error>> + Send,
+    F: Fn((quinn::SendStream, quinn::RecvStream)) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     // Load CA chain, or if none is given, load cert file.
     let mut roots = rustls::RootCertStore::empty();
@@ -114,18 +114,18 @@ where
         // TODO do we need this? also it's not auth-specific.
         let rebind = false;
         if rebind {
-            let socket = std::net::UdpSocket::bind("[::]:0").unwrap();
-            let addr = socket.local_addr().unwrap();
+            let socket = std::net::UdpSocket::bind("[::]:0")?;
+            let addr = socket.local_addr()?;
             info!("rebinding to {addr}");
             endpoint.rebind(socket).expect("rebind failed");
         }
 
         // Auth request.
-        let request = format!("AUTH ME\n");
-        send.write_all(request.as_bytes())
+        let request = b"AUTH ME\n";
+        send.write_all(request)
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
-        send.finish().unwrap();
+        send.finish()?;
 
         let response_start = Instant::now();
         debug!("request sent at {:?}", response_start - start);
@@ -134,51 +134,40 @@ where
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
         let duration = response_start.elapsed();
-        debug!(
-            "response received in {:?} - {} KiB/s",
-            duration,
-            resp.len() as f32 / (duration_secs(&duration) * 1024.0)
-        );
-    
-        warn!("TODO in auth");
+        debug!("response received in {:?}", duration);
+
+        warn!("TODO in auth"); // TODO actually auth
     }
 
-    let auth_time = Instant::now() - start;
-    info!(auth_time_s=auth_time.as_secs(), "PR QUIC connection to server is established.");
+    info!(
+        "PR QUIC connection to server established in {:?}.",
+        start.elapsed()
+    );
+
+    // PR QUIC client side loop
     loop {
-        match conn.accept_bi().await {
-            Ok((send_stream, recv_stream)) => {
-                // Spawn a Tokio task to handle the incoming stream using the callback.
-                tokio::spawn(async move {
-                    /* TODO let (write_half, read_half) = tokio::io::split(send_stream, recv_stream);
-                    if let Err(e) = callback(write_half, read_half).await {
-                        error!("Error in stream callback: {}", e);
-                    }*/
-                });
-                debug!("Spawned task to handle incoming stream.");
-            }
+        let stream = conn.accept_bi().await;
+        let stream = match stream {
             Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                // Handle connection closed by the server gracefully.
-                info!("Connection closed by the server.");
-                break;
+                info!("stream closed");
+                continue;
             }
             Err(e) => {
-                // Log other connection errors and decide whether to break or continue.
-                error!("Failed to accept incoming stream: {}", e);
-                break;
+                error!("stream error: {:?}", e);
+                continue;
             }
-        }
+            Ok(s) => s,
+        };
+
+        let fut = handle_stream_cb(stream);
+        tokio::spawn(
+            async move {
+                if let Err(e) = fut.await {
+                    error!("failed: {reason}", reason = e.to_string());
+                }
+            }
+            .instrument(info_span!("stream handler")),
+        );
     }
-
-    conn.close(0u32.into(), b"done");
-
-    // Graceful shutdown or cleanup after loop exits.
-    endpoint.wait_idle().await;
-    info!("Client endpoint idle and cleaned up.");
-
-    Ok(())
 }
 
-fn duration_secs(x: &Duration) -> f32 {
-    x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
-}

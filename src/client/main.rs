@@ -140,11 +140,9 @@ async fn main() -> Result<()> {
 
 #[allow(unused)]
 async fn handle_quic_to_tcp(
-    mut tcp_stream: tokio::net::TcpStream,
-    quic_connection: quinn::Connection,
+    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<(), Error> {
     // Open a new QUIC stream
-    let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
     debug!("handle_quic_to_tcp stub");
 
     /*

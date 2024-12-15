@@ -241,17 +241,17 @@ pub fn generate_quic_cert(
     Ok((vec![cert], key))
 }
 
-#[instrument(skip(config, handle_incoming))]
-pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_incoming: F) -> Result<()>
+#[instrument(skip(config, handle_incoming_client))]
+pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_incoming_client: F) -> Result<()>
 where
-    F: Fn(quinn::Connection) -> Fut + Send + Sync + 'static,
+    F: Fn(Arc<ServerConfig>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC server setup");
 
     // Load or generate certificate.
     let (cert_chain, key_der) = load_or_generate_quic_cert(
-        config.cert_hostname,
+        config.cert_hostname.clone(),
         config.key_file.clone(),
         config.cert_file.clone(),
     )
@@ -283,6 +283,7 @@ where
     // PR QUIC server side loop:
     // Handle incoming QUIC connections forever.
     let start = Instant::now();
+    let config = Arc::from(config);
     info!("QUIC server is ready and accepting connections");
     while let Some(conn) = endpoint.accept().await {
         if config
@@ -312,7 +313,7 @@ where
 
             debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 
-            let fut = handle_incoming(connection);
+            let fut = handle_incoming_client(Arc::clone(&config), connection);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("connection failed: {reason}", reason = e.to_string())

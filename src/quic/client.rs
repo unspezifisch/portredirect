@@ -110,7 +110,7 @@ where
 
     // Open AUTH channel. It's where we prove to the server that we know the PSK and thus are to be trusted.
     // We already know we can trust the server because its TLS cert is signed by our CA.
-    {
+    if false {
         let (mut send, mut recv) = conn
             .open_bi()
             .await

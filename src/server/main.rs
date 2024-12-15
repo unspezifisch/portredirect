@@ -6,12 +6,14 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
-use tokio::task::JoinHandle;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, warn, Level};
 
@@ -327,32 +329,58 @@ async fn handle_tcp_to_quic_stream(
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
 #[instrument(skip(conn))]
-async fn handle_quic_client_connection(conn: quinn::Connection) -> Result<()> {
+async fn handle_quic_client_connection(
+    config: Arc<ServerConfig>,
+    conn: quinn::Connection,
+) -> Result<()> {
     debug!("Authenticating PR QUIC client");
 
+    // An unknown client just connected, they need to authenticate or get kicked.
     let (mut send, mut recv) = conn
         .open_bi()
         .await
-        .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+        .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
 
-    // Auth request.
-    let resp = recv
-        .read_to_end(64)
+    // Step 1: Generate a challenge
+    // Add a (coarse) timestamp to needlessly.
+    let coarse_unix_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() / 60;
+
+    // Generate 32 random bytes
+    let mut random_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut random_bytes);
+    let random_bytes_hex = hex::encode(random_bytes);
+
+    let challenge = format!(
+        "this-is-the-challenge-{}-at-{}-pr-v1",
+        random_bytes_hex, coarse_unix_time
+    );
+
+    // Step 2: Send the challenge
+    let request = format!("WHO THE HECK ARE YOU?\n{}\n", challenge);
+    send.write_all(request.as_bytes())
         .await
-        .map_err(|e| anyhow!("failed to read data from client: {}", e))?;
-    debug!("client data: {:?}", resp);
+        .map_err(|e| anyhow!("failed to send AUTH request: {}", e))?;
 
-    if resp != b"AUTH ME\n" {
-        return Err(anyhow!("client didn't send AUTH ME but {:?}", resp));
+    // Step 3: Wait for the client's response
+    let mut buffer = [0u8; 64]; // SHA-256 is 32 bytes, so hex-encoded length is 64.
+    let n = send
+        .read(&mut buffer)
+        .await
+        .map_err(|e| anyhow!("failed to read response: {}", e))?;
+    let client_response =
+        std::str::from_utf8(&buffer[..n]).map_err(|e| anyhow!("invalid UTF-8: {}", e))?;
+
+    // Step 4: Compute expected response
+    let mut hasher = Sha256::new();
+    hasher.update(format!("{}{}", challenge, config.psk));
+    let expected_response = hex::encode(hasher.finalize());
+
+    // Step 5: Validate the client's response
+    if client_response.trim() == expected_response {
+        println!("Authentication successful");
+    } else {
+        return Err(anyhow!("Authentication failed"));
     }
-
-    // HACK no auth checks at all
-    warn!("TODO auth"); // TODO actually auth
-
-    let request = b"AUTH OK\n";
-    send.write_all(request)
-        .await
-        .map_err(|e| anyhow!("failed to send request: {}", e))?;
 
     debug!("PR QUIC client auth OK");
 

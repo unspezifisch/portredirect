@@ -4,11 +4,11 @@
 // Based on: Quinn example code (originally licensed under Apache-2.0/MIT)
 // Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/server.rs
 
-use anyhow::{anyhow, bail, Context, Error, Result};
+use anyhow::{bail, Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use std::{ascii, fs, io, net::SocketAddr, path::PathBuf, str, sync::Arc, time::Instant};
-use tracing::{debug, error, info, instrument, warn, Span};
+use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 

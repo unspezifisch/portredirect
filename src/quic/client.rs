@@ -9,13 +9,13 @@ use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::{
     fs,
-    io::{self, Write},
+    io,
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
-use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 use super::ALPN_QUIC_PORTREDIRECT;
 

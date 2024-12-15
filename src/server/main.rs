@@ -2,13 +2,11 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
-use core::str;
 use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
-use quinn::Connection;
-use std::ascii;
+use tokio::task::JoinHandle;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -16,7 +14,6 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, warn, Level};
-use tracing_subscriber::field::debug;
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -243,7 +240,7 @@ async fn main() -> Result<()> {
 /// # Arguments
 /// * `local_socket` - The accepted local socket.
 /// * `remote_addr` - The address of the destination.
-async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Result<(), Error> {
+async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Result<()> {
     let remote_socket = TcpStream::connect(remote_addr).await?;
 
     // Split the sockets into read and write halves
@@ -251,18 +248,19 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
     let (mut remote_read, mut remote_write) = remote_socket.into_split();
 
     // Forward data from local to remote.
-    let local_to_remote_task = tokio::spawn(async move {
+    let local_to_remote_task: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut buffer = [0u8; 1024];
         while let Ok(bytes_read) = local_read.read(&mut buffer).await {
             if bytes_read == 0 {
                 break;
             }
-            remote_write.write_all(&buffer[..bytes_read]).await;
+            remote_write.write_all(&buffer[..bytes_read]).await?;
         }
+        Ok(())
     });
 
     // Forward data from remote to local.
-    let remote_to_local_task = tokio::spawn(async move {
+    let remote_to_local_task: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut buffer = [0u8; 1024];
         while let Ok(bytes_read) = remote_read.read(&mut buffer).await {
             if bytes_read == 0 {
@@ -270,7 +268,7 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
             }
             local_write.write_all(&buffer[..bytes_read]).await?;
         }
-        Ok::<(), io::Error>(())
+        Ok(())
     });
 
     // Wait for both tasks to complete.

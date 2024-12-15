@@ -133,8 +133,7 @@ where
         send.write_all(request)
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
-        send.finish()?;
-
+        
         let response_start = Instant::now();
         debug!("request sent at {:?}", response_start - start);
         let resp = recv

@@ -333,35 +333,6 @@ async fn handle_quic_client_connection(conn: quinn::Incoming) -> Result<()> {
         .context("accepting incoming quic client connection")?;
     debug!("QUIC connection established");
 
-    // Each stream initiated by the client constitutes a new request.
-    loop {
-        match connection.accept_bi().await {
-            Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                debug!("QUIC connection closed by application");
-                break;
-            }
-            Err(e) => {
-                error!("Error accepting stream: {:?}", e);
-                return Err(e.into());
-            }
-            Ok(stream) => {
-                tokio::spawn(async move {
-                    if let Err(e) = handle_pr_meta_channel(stream).await {
-                        error!("QUIC client handler failed: {reason}", reason = e.to_string());
-                    }
-                });
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[allow(unused)]
-#[instrument(skip(send, recv))]
-async fn handle_pr_meta_channel(
-    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
-) -> Result<()> {
     let req = recv
         .read_to_end(64 * 1024)
         .await

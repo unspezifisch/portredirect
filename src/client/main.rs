@@ -130,9 +130,7 @@ async fn main() -> Result<()> {
     );
 
     // Spawn the QUIC client
-    if let Err(e) = run_quic_client(config, handle_quic_to_tcp).await {
-        error!(error = %e, "QUIC client thread error");
-    }
+    run_quic_client(config, handle_quic_to_tcp).await.context("QUIC client thread")?;
 
     Ok(())
 }

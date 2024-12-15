@@ -241,8 +241,8 @@ pub fn generate_quic_cert(
     Ok((vec![cert], key))
 }
 
-#[instrument(skip(config, handle_outgoing))]
-pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_outgoing: F) -> Result<()>
+#[instrument(skip(config, handle_incoming))]
+pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_incoming: F) -> Result<()>
 where
     F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
@@ -308,7 +308,7 @@ where
             );
             debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 
-            let fut = handle_outgoing(conn);
+            let fut = handle_incoming(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("connection failed: {reason}", reason = e.to_string())

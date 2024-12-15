@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, Level};
+use tracing::{debug, error, info, instrument, span, warn, Level};
+use tracing_subscriber::field::debug;
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -326,30 +327,36 @@ async fn handle_tcp_to_quic_stream(
 }
 
 // Handles one PR QUIC client connection.
+// Called by run_quic_server.
 #[instrument(skip(conn))]
-async fn handle_quic_client_connection(conn: quinn::Incoming) -> Result<()> {
-    let connection = conn
-        .await
-        .context("accepting incoming quic client connection")?;
-    debug!("QUIC connection established");
+async fn handle_quic_client_connection(conn: quinn::Connection) -> Result<()> {
+    debug!("Authenticating PR QUIC client");
 
-    let req = recv
-        .read_to_end(64 * 1024)
+    let (mut send, mut recv) = conn
+        .open_bi()
         .await
-        .map_err(|e| anyhow!("failed reading request: {}", e))?;
-    let mut escaped = String::new();
-    for &x in &req[..] {
-        let part = ascii::escape_default(x).collect::<Vec<_>>();
-        escaped.push_str(str::from_utf8(&part).unwrap());
+        .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+
+    // Auth request.
+    let resp = recv
+        .read_to_end(64)
+        .await
+        .map_err(|e| anyhow!("failed to read data from client: {}", e))?;
+    debug!("client data: {:?}", resp);
+
+    if resp != b"AUTH ME\n" {
+        return Err(anyhow!("client didn't send AUTH ME but {:?}", resp));
     }
-    debug!(escaped=%escaped);
 
-    // Execute the request
-    let resp = b"HELLO I AM PRSERVER, WHO ARE YOU?".to_vec();
-    // Write the response
-    send.write_all(&resp)
+    // HACK no auth checks at all
+    warn!("TODO auth"); // TODO actually auth
+
+    let request = b"AUTH OK\n";
+    send.write_all(request)
         .await
-        .map_err(|e| anyhow!("failed to send response: {}", e))?;
+        .map_err(|e| anyhow!("failed to send request: {}", e))?;
+
+    debug!("PR QUIC client auth OK");
 
     Ok(())
 }

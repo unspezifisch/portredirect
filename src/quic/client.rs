@@ -51,10 +51,7 @@ impl ClientConfig {
 }
 
 #[instrument(skip(config, handle_incoming))]
-pub async fn run_quic_client<F, Fut>(
-    config: ClientConfig,
-    handle_incoming: F,
-) -> Result<(), Error>
+pub async fn run_quic_client<F, Fut>(config: ClientConfig, handle_incoming: F) -> Result<(), Error>
 where
     F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
@@ -133,23 +130,28 @@ where
         send.write_all(request)
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
-        
+
+        // HACK no auth checks at all
+        warn!("TODO auth"); // TODO actually auth
+
         let response_start = Instant::now();
-        debug!("request sent at {:?}", response_start - start);
+        debug!("AUTH request sent at {:?}", response_start - start);
         let resp = recv
-            .read_to_end(usize::MAX)
+            .read_to_end(64)
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
         let duration = response_start.elapsed();
-        debug!("response received in {:?}", duration);
+        debug!("AUTH response received in {:?}", duration);
 
-        warn!("TODO in auth"); // TODO actually auth
+        debug!("client data: {:?}", resp);
+        if resp != b"AUTH OK\n" {
+            return Err(anyhow!("server didn't send AUTH OK but {:?}", resp));
+        }
+
+        debug!("PR QUIC server reports client auth OK");
     }
 
-    info!(
-        "PR QUIC connection established in {:?}.",
-        start.elapsed()
-    );
+    info!("PR QUIC connection established in {:?}.", start.elapsed());
 
     // PR QUIC client side loop:
     // Handle incoming streams forever.
@@ -180,10 +182,7 @@ where
         }
     }
 
-    info!(
-        "PR QUIC connection terminated after {:?}.",
-        start.elapsed()
-    );
+    info!("PR QUIC connection terminated after {:?}.", start.elapsed());
 
     Ok(())
 }

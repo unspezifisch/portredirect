@@ -244,7 +244,7 @@ pub fn generate_quic_cert(
 #[instrument(skip(config, handle_incoming))]
 pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_incoming: F) -> Result<()>
 where
-    F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
+    F: Fn(quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC server setup");
@@ -306,9 +306,13 @@ where
                 conn.remote_address(),
                 conn.remote_address_validated()
             );
+            let connection = conn
+                .await
+                .context("accepting incoming quic client connection")?;
+
             debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 
-            let fut = handle_incoming(conn);
+            let fut = handle_incoming(connection);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("connection failed: {reason}", reason = e.to_string())

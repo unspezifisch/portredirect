@@ -7,6 +7,7 @@
 use anyhow::{bail, Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use secrecy::SecretString;
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -22,6 +23,8 @@ pub struct ServerConfig {
     pub listen: SocketAddr,
     pub stateless_retry: bool,
     pub connection_limit: Option<usize>,
+
+    pub pr_psk: SecretString,
 }
 
 impl ServerConfig {
@@ -30,6 +33,7 @@ impl ServerConfig {
         config_dir: PathBuf,
         cert_alt_name: String,
         bind_socket: SocketAddr,
+        psk: SecretString,
     ) -> Self {
         ServerConfig {
             cert_hostname: cert_alt_name,
@@ -38,6 +42,7 @@ impl ServerConfig {
             listen: bind_socket,
             stateless_retry: false,
             connection_limit: None,
+            pr_psk: psk,
         }
     }
 }

@@ -8,6 +8,8 @@ use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use secrecy::{ExposeSecret, SecretString};
+use sha2::{Digest, Sha256};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -57,7 +59,7 @@ struct Args {
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
-    quic_psk: Option<String>,
+    quic_psk: Option<SecretString>,
 
     /// Mode of operation: quic or direct-forwarding.
     #[clap(long, value_enum)]
@@ -102,7 +104,7 @@ async fn main() -> Result<()> {
             }
         }
     } else if args.mode == Mode::Quic {
-        match (args.quic_server_host, args.quic_server_port, args.quic_psk) {
+        match (args.quic_server_host, args.quic_server_port, &args.quic_psk) {
             (quic_server_host, Some(quic_server_port), Some(_)) => {
                 // Parameters are complete.
                 quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
@@ -154,6 +156,9 @@ async fn main() -> Result<()> {
 
     // Create QUIC server if needed.
     if args.mode == Mode::Quic {
+        let quic_psk = args
+            .quic_psk
+            .expect("PSK is required for QUIC PR operation");
         rustls::crypto::ring::default_provider()
             .install_default()
             .expect("Failed to install rustls crypto provider");
@@ -164,6 +169,7 @@ async fn main() -> Result<()> {
             config_dir,
             args.quic_cert_hostname,
             quic_bind_addr,
+            quic_psk,
         );
 
         // Spawn the QUIC server
@@ -363,16 +369,21 @@ async fn handle_quic_client_connection(
 
     // Step 3: Wait for the client's response
     let mut buffer = [0u8; 64]; // SHA-256 is 32 bytes, so hex-encoded length is 64.
-    let n = send
+    let n = recv
         .read(&mut buffer)
         .await
-        .map_err(|e| anyhow!("failed to read response: {}", e))?;
+        .map_err(|e| anyhow!("failed to read AUTH response: {}", e))?;
+    let n = n.unwrap_or(0);
+    if n == 0 {
+        return Err(anyhow!("no AUTH response"))
+    }
     let client_response =
         std::str::from_utf8(&buffer[..n]).map_err(|e| anyhow!("invalid UTF-8: {}", e))?;
 
     // Step 4: Compute expected response
     let mut hasher = Sha256::new();
-    hasher.update(format!("{}{}", challenge, config.psk));
+    hasher.update(challenge);
+    hasher.update(config.pr_psk.expose_secret());
     let expected_response = hex::encode(hasher.finalize());
 
     // Step 5: Validate the client's response

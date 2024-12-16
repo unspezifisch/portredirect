@@ -7,6 +7,8 @@ use anyhow::{Context, Error, Result};
 use clap::Parser;
 use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
+use secrecy::{ExposeSecret, SecretString};
+use sha2::{Digest, Sha256};
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,7 +48,7 @@ struct Args {
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
-    quic_psk: Option<String>,
+    quic_psk: SecretString,
 }
 
 /// Data structure to hold connection statistics.
@@ -127,32 +129,70 @@ async fn main() -> Result<()> {
         quic_local_addr,
         quic_remote_addr,
         args.quic_remote_hostname_match,
+        args.quic_psk,
     );
 
     // Spawn the QUIC client
-    run_quic_client(config, handle_quic_to_tcp).await.context("QUIC client thread")?;
+    run_quic_client(config, handle_quic_to_tcp)
+        .await
+        .context("QUIC client thread")?;
 
     Ok(())
 }
 
 // Handles incoming QUIC streams, forwards them to their destination.
 #[allow(unused)]
-#[instrument[skip(conn)]]
-async fn handle_quic_to_tcp(mut conn: quinn::Incoming) -> Result<(), Error> {
-    // Open a new QUIC stream
+#[instrument[skip(connection)]]
+async fn handle_quic_to_tcp(
+    config: Arc<ClientConfig>,
+    mut connection: quinn::Connection,
+) -> Result<(), Error> {
+    // Accept the first QUIC stream, which is for authenticating us to the server.
     debug!("Accepting server-initiated QUIC stream.");
-    let stream = conn.accept();
-    let stream = match stream {
-        Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-            warn!("stream closed");
-            return Ok(());
+
+    // Client auth loop. Runs until server is happy.
+    while let Ok((mut send, mut recv)) = connection.accept_bi().await {
+        // Read up to 512 bytes from the QUIC stream
+        let mut buffer = recv
+            .read_to_end(512)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to read from QUIC stream: {}", e))?;
+
+        // Convert the buffer to a string
+        let received = std::str::from_utf8(&buffer)
+            .map_err(|e| anyhow::anyhow!("received invalid UTF-8: {}", e))?;
+
+        // Split into lines
+        let mut lines = received.lines();
+
+        // Validate the first line
+        let first_line = lines
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing first line in authentication message"))?;
+        if first_line != "WHO THE HECK ARE YOU?" {
+            return Err(anyhow::anyhow!("unexpected first line: {}", first_line));
         }
-        Err(e) => {
-            error!(error = %e, "stream error");
-            return Err(anyhow::Error::from(e));
-        }
-        Ok(s) => s,
-    };
+
+        // Validate the second line (challenge request)
+        let second_line = lines
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing second line in authentication message"))?;
+        debug!("Received challenge request: {}", second_line);
+
+        // Compute the SHA-256 hash and hex-encode it
+        let mut hasher = Sha256::new();
+        hasher.update(&second_line);
+        hasher.update(config.pr_psk.expose_secret());
+        let response = hex::encode(hasher.finalize());
+        debug!("Responding with SHA-256 hex: {}", response);
+
+        // Send the response to the server
+        send.write_all(response.as_bytes())
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to send response: {}", e))?;
+
+        debug!("Authentication response sent.");
+    }
 
     loop {
         debug!("handle_quic_to_tcp");

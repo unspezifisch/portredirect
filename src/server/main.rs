@@ -17,7 +17,7 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, warn, Level};
+use tracing::{debug, error, info, instrument, span, Level};
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -334,7 +334,7 @@ async fn handle_tcp_to_quic_stream(
 
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
-#[instrument(skip(conn))]
+#[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
     config: Arc<ServerConfig>,
     conn: quinn::Connection,
@@ -360,40 +360,74 @@ async fn handle_quic_client_connection(
         "this-is-the-challenge-{}-at-{}-pr-v1",
         random_bytes_hex, coarse_unix_time
     );
+    debug!(challenge_len = challenge.len(), "AUTH: sending challenge");
 
     // Step 2: Send the challenge
+    let auth_start = Instant::now();
     let request = format!("WHO THE HECK ARE YOU?\n{}\n", challenge);
     send.write_all(request.as_bytes())
         .await
         .map_err(|e| anyhow!("failed to send AUTH request: {}", e))?;
 
     // Step 3: Wait for the client's response
-    let mut buffer = [0u8; 64]; // SHA-256 is 32 bytes, so hex-encoded length is 64.
+    // SHA-256 is 32 bytes, so hex-encoded length is 64.
+    // Add 1 byte for LF ("\n").
+    let mut buffer = [0u8; 65];
     let n = recv
         .read(&mut buffer)
         .await
         .map_err(|e| anyhow!("failed to read AUTH response: {}", e))?;
+    debug!(
+        response_len = n,
+        "AUTH: got response in {:?}",
+        auth_start.elapsed()
+    );
+
+    // Validate length of response.
     let n = n.unwrap_or(0);
-    if n == 0 {
-        return Err(anyhow!("no AUTH response"))
+    if n != buffer.len() {
+        return Err(anyhow!(
+            "wrong length AUTH response n={} (want {})",
+            n,
+            buffer.len()
+        ));
     }
+
+    // Decode to string.
     let client_response =
         std::str::from_utf8(&buffer[..n]).map_err(|e| anyhow!("invalid UTF-8: {}", e))?;
+    if client_response.len() != buffer.len() {
+        return Err(anyhow!(
+            "wrong length AUTH response n_decoded={} (want {})",
+            client_response.len(),
+            buffer.len()
+        ));
+    }
+    if !client_response.ends_with("\n") {
+        return Err(anyhow!("wrong line terminator"));
+    }
 
     // Step 4: Compute expected response
     let mut hasher = Sha256::new();
     hasher.update(challenge);
     hasher.update(config.pr_psk.expose_secret());
-    let expected_response = hex::encode(hasher.finalize());
+    let expected_response = hex::encode(hasher.finalize()) + "\n";
 
     // Step 5: Validate the client's response
-    if client_response.trim() == expected_response {
-        println!("Authentication successful");
+    if client_response == expected_response {
+        // Send good result.
+        send.write_all(b"HAPPY\n")
+            .await
+            .map_err(|e| anyhow!("failed to send HAPPY response: {}", e))?;
     } else {
-        return Err(anyhow!("Authentication failed"));
+        // Send bad result.
+        send.write_all(b"BAD\n")
+            .await
+            .map_err(|e| anyhow!("failed to send BAD response: {}", e))?;
+        send.finish()?;
+        return Err(anyhow!("Authentication failed, response mismatch"));
     }
 
-    debug!("PR QUIC client auth OK");
-
+    debug!("Authenticated PR QUIC client OK");
     Ok(())
 }

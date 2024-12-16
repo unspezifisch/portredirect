@@ -7,14 +7,8 @@
 use anyhow::{anyhow, Error, Result};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
-use std::{
-    fs,
-    io,
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
-    time::Instant,
-};
+use secrecy::SecretString;
+use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
 use super::ALPN_QUIC_PORTREDIRECT;
@@ -29,6 +23,8 @@ pub struct ClientConfig {
     pub local_socket: SocketAddr,
     pub remote_socket: SocketAddr,
     pub connection_limit: Option<usize>,
+
+    pub pr_psk: SecretString,
 }
 
 impl ClientConfig {
@@ -38,6 +34,7 @@ impl ClientConfig {
         local_socket: SocketAddr,
         remote_socket: SocketAddr,
         remote_hostname_match: Option<String>,
+        psk: SecretString,
     ) -> Self {
         ClientConfig {
             remote_hostname_match,
@@ -46,6 +43,7 @@ impl ClientConfig {
             local_socket,
             remote_socket,
             connection_limit: None,
+            pr_psk: psk,
         }
     }
 }
@@ -53,17 +51,17 @@ impl ClientConfig {
 #[instrument(skip(config, handle_incoming))]
 pub async fn run_quic_client<F, Fut>(config: ClientConfig, handle_incoming: F) -> Result<(), Error>
 where
-    F: Fn(quinn::Incoming) -> Fut + Send + Sync + 'static,
+    F: Fn(Arc<ClientConfig>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC client setup");
 
     // Load CA chain, or if none is given, load cert file.
     let mut roots = rustls::RootCertStore::empty();
-    if let Some(ca_path) = config.ca_path {
-        roots.add(CertificateDer::from(fs::read(ca_path)?))?;
+    if let Some(ca_path) = &config.ca_path {
+        roots.add(CertificateDer::from(fs::read(&ca_path)?))?;
     } else {
-        let cert_file_result = fs::read(config.cert_file);
+        let cert_file_result = fs::read(&config.cert_file);
 
         match cert_file_result {
             Ok(cert) => {
@@ -86,6 +84,7 @@ where
 
     let server_name_match = config
         .remote_hostname_match
+        .clone()
         .unwrap_or_else(|| config.remote_socket.ip().to_string());
 
     // QUIC client setup.
@@ -151,10 +150,10 @@ where
         debug!("PR QUIC server reports client auth OK");
     }
 
-    info!("PR QUIC connection established in {:?}.", start.elapsed());
-
     // PR QUIC client side loop:
     // Handle incoming streams forever.
+    let config = Arc::from(config);
+    info!("PR QUIC connection established in {:?}.", start.elapsed());
     while let Some(conn) = endpoint.accept().await {
         if config
             .connection_limit
@@ -173,7 +172,8 @@ where
             );
             debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 
-            let fut = handle_incoming(conn);
+            let connection = conn.await?;
+            let fut = handle_incoming(Arc::clone(&config), connection);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
                     error!("connection failed: {reason}", reason = e.to_string())

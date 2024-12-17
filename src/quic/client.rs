@@ -101,87 +101,24 @@ where
         remote = config.remote_socket.to_string(),
         "Connecting to PR QUIC Server"
     );
-    let conn = endpoint
+    let connection = endpoint
         .connect(config.remote_socket, server_name_match.as_str())?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
     debug!("QUIC connected at {:?}", start.elapsed());
 
-    // Open AUTH channel. It's where we prove to the server that we know the PSK and thus are to be trusted.
-    // We already know we can trust the server because its TLS cert is signed by our CA.
-    if false {
-        let (mut send, mut recv) = conn
-            .open_bi()
-            .await
-            .map_err(|e| anyhow!("failed to open stream: {}", e))?;
-
-        // TODO do we need this? also it's not auth-specific.
-        let rebind = false;
-        if rebind {
-            let socket = std::net::UdpSocket::bind("[::]:0")?;
-            let addr = socket.local_addr()?;
-            info!("rebinding to {addr}");
-            endpoint.rebind(socket).expect("rebind failed");
-        }
-
-        // Auth request.
-        let request = b"AUTH ME\n";
-        send.write_all(request)
-            .await
-            .map_err(|e| anyhow!("failed to send request: {}", e))?;
-
-        // HACK no auth checks at all
-        warn!("TODO auth"); // TODO actually auth
-
-        let response_start = Instant::now();
-        debug!("AUTH request sent at {:?}", response_start - start);
-        let resp = recv
-            .read_to_end(64)
-            .await
-            .map_err(|e| anyhow!("failed to read response: {}", e))?;
-        let duration = response_start.elapsed();
-        debug!("AUTH response received in {:?}", duration);
-
-        debug!("client data: {:?}", resp);
-        if resp != b"AUTH OK\n" {
-            return Err(anyhow!("server didn't send AUTH OK but {:?}", resp));
-        }
-
-        debug!("PR QUIC server reports client auth OK");
-    }
-
     // PR QUIC client side loop:
     // Handle incoming streams forever.
     let config = Arc::from(config);
     info!("PR QUIC connection established in {:?}.", start.elapsed());
-    while let Some(conn) = endpoint.accept().await {
-        if config
-            .connection_limit
-            .is_some_and(|n| endpoint.open_connections() >= n)
-        {
-            warn!(
-                "Refusing connection: open connection limit ({}) reached",
-                config.connection_limit.unwrap()
-            );
-            conn.refuse();
-        } else {
-            let peer_info = format!(
-                "server: {} (validated: {})",
-                conn.remote_address(),
-                conn.remote_address_validated()
-            );
-            debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
-
-            let connection = conn.await?;
-            let fut = handle_incoming(Arc::clone(&config), connection);
-            tokio::spawn(async move {
-                if let Err(e) = fut.await {
-                    error!("connection failed: {reason}", reason = e.to_string())
-                }
-            });
+    let fut = handle_incoming(Arc::clone(&config), connection);
+    let task = tokio::spawn(async move {
+        if let Err(e) = fut.await {
+            error!("connection failed: {reason}", reason = e.to_string())
         }
-    }
+    });
 
+    task.await?;
     info!("PR QUIC connection terminated after {:?}.", start.elapsed());
 
     Ok(())

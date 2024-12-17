@@ -9,6 +9,8 @@ use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncWriteExt;
+use tracing_subscriber::field::debug;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -142,7 +144,7 @@ async fn main() -> Result<()> {
 
 // Handles incoming QUIC streams, forwards them to their destination.
 #[allow(unused)]
-#[instrument[skip(connection)]]
+#[instrument[skip(config, connection)]]
 async fn handle_quic_to_tcp(
     config: Arc<ClientConfig>,
     mut connection: quinn::Connection,
@@ -152,11 +154,19 @@ async fn handle_quic_to_tcp(
 
     // Client auth loop. Runs until server is happy.
     while let Ok((mut send, mut recv)) = connection.accept_bi().await {
+        debug!("opened bidi channel for AUTH");
+
+        let mut foo_n = [0u8; 4];
+        recv.read_exact(&mut foo_n).await?;
+        debug!("read 4 bytes: {:?}", foo_n);
+        send.write_all(b"bar\n").await?;
+
         // Read up to 512 bytes from the QUIC stream
         let mut buffer = recv
-            .read_to_end(512)
+            .read_to_end(1024)
             .await
             .map_err(|e| anyhow::anyhow!("failed to read from QUIC stream: {}", e))?;
+        debug!("got first data: {:?}", buffer);
 
         // Convert the buffer to a string
         let received = std::str::from_utf8(&buffer)
@@ -190,6 +200,7 @@ async fn handle_quic_to_tcp(
         send.write_all(response.as_bytes())
             .await
             .map_err(|e| anyhow::anyhow!("failed to send response: {}", e))?;
+        send.flush().await?;
 
         debug!("Authentication response sent.");
     }

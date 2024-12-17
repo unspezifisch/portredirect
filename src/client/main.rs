@@ -10,12 +10,11 @@ use portredirect::quic::client::{run_quic_client, ClientConfig};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
-use tracing_subscriber::field::debug;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, warn, Level};
+use tracing::{debug, info, instrument, span, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -191,7 +190,7 @@ async fn handle_quic_to_tcp(
 
         // Compute the SHA-256 hash and hex-encode it
         let mut hasher = Sha256::new();
-        hasher.update(&second_line);
+        hasher.update(second_line);
         hasher.update(config.pr_psk.expose_secret());
         let response = hex::encode(hasher.finalize());
         debug!("Responding with SHA-256 hex: {}", response);

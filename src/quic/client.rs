@@ -9,7 +9,7 @@ use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use secrecy::SecretString;
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument};
 
 use super::ALPN_QUIC_PORTREDIRECT;
 
@@ -59,7 +59,7 @@ where
     // Load CA chain, or if none is given, load cert file.
     let mut roots = rustls::RootCertStore::empty();
     if let Some(ca_path) = &config.ca_path {
-        roots.add(CertificateDer::from(fs::read(&ca_path)?))?;
+        roots.add(CertificateDer::from(fs::read(ca_path)?))?;
     } else {
         let cert_file_result = fs::read(&config.cert_file);
 

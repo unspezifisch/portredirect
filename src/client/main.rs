@@ -160,9 +160,10 @@ async fn handle_quic_to_tcp(
         debug!("read 4 bytes: {:?}", foo_n);
         send.write_all(b"bar\n").await?;
 
-        // Read up to 512 bytes from the QUIC stream
-        let mut buffer = recv
-            .read_to_end(1024)
+        // Read up to n bytes from the QUIC stream
+        let mut buffer = [0u8; 512];
+        recv
+            .read(&mut buffer)
             .await
             .map_err(|e| anyhow::anyhow!("failed to read from QUIC stream: {}", e))?;
         debug!("got first data: {:?}", buffer);

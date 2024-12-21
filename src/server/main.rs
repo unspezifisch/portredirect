@@ -280,7 +280,10 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
     });
 
     // Wait for both tasks to complete.
-    let _ = tokio::try_join!(local_to_remote_task, remote_to_local_task)?;
+    let result = tokio::try_join!(local_to_remote_task, remote_to_local_task);
+    if let Err(e) = result {
+        error!("Error in TCP forwarding: {:?}", e);
+    }
 
     Ok(())
 }
@@ -447,6 +450,6 @@ async fn handle_quic_client_connection(
         sleep(Duration::from_secs(30)).await;
 
         // wait for next incoming external tcp connection
-        
+
     }
 }

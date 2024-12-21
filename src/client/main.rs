@@ -9,11 +9,11 @@ use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use tokio::task::JoinHandle;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{debug, info, instrument, span, Level};
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, instrument, span, warn, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -260,7 +260,7 @@ async fn handle_quic_to_tcp(
         let config = Arc::clone(&config);
         tokio::spawn(async move {
             if let Err(e) = handle_quic_stream(config, send, recv).await {
-                info!("Error handling QUIC stream: {}", e);
+                warn!("Error handling QUIC stream: {}", e);
             }
         });
     }
@@ -281,10 +281,12 @@ async fn handle_quic_stream(
             .await
             .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
+    let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
+
     // Forward TCP -> QUIC
     let tcp_to_quic: JoinHandle<Result<(), Error>> = tokio::spawn(async move {
         let mut buf = [0; 1024];
-        while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
+        while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
             if bytes_read == 0 {
                 break; // End of stream
             }
@@ -301,13 +303,16 @@ async fn handle_quic_stream(
             if bytes_read == 0 {
                 break; // End of stream
             }
-            tcp_stream.write_all(&buf[..bytes_read]).await?;
+            tcp_write_half.write_all(&buf[..bytes_read]).await?;
         }
         Ok(())
     });
 
-    // Wait for both directions to complete
-    tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
+    // Wait for both directions to complete.
+    let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
+    if let Err(e) = result {
+        return Err(anyhow!("Error in receive side of QUIC tunnel for TCP forwarding: {:?}", e));
+    }
 
     Ok(())
 }

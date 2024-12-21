@@ -281,6 +281,9 @@ async fn handle_quic_stream(
             .await
             .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
+    let connection_id = quic_recv.id();
+    debug!("Starting QUIC stream handler for connection {}", connection_id);
+
     let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
 
     // Forward TCP -> QUIC
@@ -314,5 +317,6 @@ async fn handle_quic_stream(
         return Err(anyhow!("Error in receive side of QUIC tunnel for TCP forwarding: {:?}", e));
     }
 
+    debug!("Closed QUIC stream handler for connection {}", connection_id);
     Ok(())
 }

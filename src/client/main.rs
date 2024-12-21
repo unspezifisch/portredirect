@@ -238,10 +238,9 @@ async fn handle_quic_auth(
                 "Server was so unhappy with our response that it sent garbage."
             ));
         }
-
-        debug!("Authentication routine done.");
     }
 
+    debug!("Authentication routine done.");
     Ok(())
 }
 

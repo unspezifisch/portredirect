@@ -338,7 +338,7 @@ async fn handle_tcp_to_quic_stream(
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
-async fn handle_quic_client_connection(
+async fn handle_quic_client_auth(
     config: Arc<ServerConfig>,
     conn: quinn::Connection,
 ) -> Result<()> {
@@ -443,7 +443,21 @@ async fn handle_quic_client_connection(
         return Err(anyhow!("Authentication failed, response mismatch"));
     }
     debug!("Authenticated PR QUIC client OK");
+
+    Ok(())
+}
     
+// Handles one PR QUIC client connection.
+// Called by run_quic_server.
+#[instrument(skip(config, conn))]
+async fn handle_quic_client_connection(
+    config: Arc<ServerConfig>,
+    conn: quinn::Connection,
+) -> Result<()> {
+    debug!("Handling PR QUIC client connection from {}", conn.remote_address());
+
+    handle_quic_client_auth(config, conn).await?;
+
     // Keep AUTH channel open, we might add some stats transmission later.
     loop {
         debug!("handle_quic_client_connection the cool tunnel is active");

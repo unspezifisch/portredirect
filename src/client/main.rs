@@ -9,11 +9,9 @@ use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio::io::AsyncWriteExt;
-use tokio::time::sleep;
 use tracing::{debug, info, instrument, span, Level};
 
 /// Command-line arguments for the port redirector tool.
@@ -55,6 +53,18 @@ struct Args {
 /// Data structure to hold connection statistics.
 struct ConnectionStats {
     connection_count: usize,
+}
+
+struct AppConfig {
+    destination: SocketAddr,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            destination: "0.0.0.0:0".parse().unwrap(),
+        }
+    }
 }
 
 #[tokio::main]
@@ -125,28 +135,36 @@ async fn main() -> Result<()> {
 
     info!("QUIC connecting to {}", quic_remote_addr.clone());
 
-    let config = ClientConfig::create_default_config(
+    let app_config = AppConfig {
+        destination: destination_addr
+            .to_socket_addrs()
+            .context("resolving destination address")?
+            .next()
+            .context("resolving destination address")?,
+    };
+
+    let quic_client_config = ClientConfig::create_default_config(
         config_dir,
         quic_local_addr,
         quic_remote_addr,
         args.quic_remote_hostname_match,
         args.quic_psk,
+        Some(app_config),
     );
 
     // Spawn the QUIC client
-    run_quic_client(config, handle_quic_to_tcp)
+    run_quic_client(quic_client_config, handle_quic_to_tcp)
         .await
         .context("QUIC client thread")?;
 
     Ok(())
 }
 
-// Handles incoming QUIC streams, forwards them to their destination.
-#[allow(unused)]
+// Handles our custom authentication stream.
 #[instrument[skip(config, connection)]]
-async fn handle_quic_to_tcp(
-    config: Arc<ClientConfig>,
-    mut connection: quinn::Connection,
+async fn handle_quic_auth(
+    config: Arc<ClientConfig<AppConfig>>,
+    connection: quinn::Connection,
 ) -> Result<(), Error> {
     // Accept the first QUIC stream, which is for authenticating us to the server.
     debug!("Accepting server-initiated QUIC stream.");
@@ -160,7 +178,6 @@ async fn handle_quic_to_tcp(
         recv.read(&mut buffer)
             .await
             .map_err(|e| anyhow!("failed to read from QUIC stream: {}", e))?;
-        debug!("got first data: {:?}", buffer);
 
         // Convert the buffer to a string
         let received =
@@ -224,40 +241,72 @@ async fn handle_quic_to_tcp(
         debug!("Authentication routine done.");
     }
 
-    // Keep AUTH channel open, we might add some stats transmission later.
-    loop {
-        debug!("handle_quic_to_tcp the cool tunnel is active");
-        sleep(Duration::from_secs(30)).await;
+    Ok(())
+}
+
+// Handles incoming QUIC streams, forwards them to their destination.
+// Called directly by run_quic_client.
+#[instrument[skip(config, connection)]]
+async fn handle_quic_to_tcp(
+    config: Arc<ClientConfig>,
+    connection: quinn::Connection,
+) -> Result<(), Error> {
+    handle_quic_auth(Arc::clone(&config), connection.clone()).await?;
+
+    while let Ok((send, recv)) = connection.accept_bi().await {
+        info!("Opened QUIC stream for new forwarded connection");
+
+        let config = Arc::clone(&config);
+        tokio::spawn(async move {
+            if let Err(e) = handle_quic_stream(config, send, recv).await {
+                info!("Error handling QUIC stream: {}", e);
+            }
+        });
     }
-    /*
-      // Forward TCP -> QUIC
-      let tcp_to_quic = tokio::spawn(async move {
-          let mut buf = [0; 1024];
-          while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
-              if bytes_read == 0 {
-                  break; // End of stream
-              }
-              quic_send.write_all(&buf[..bytes_read]).await?;
-          }
-          quic_send.finish().await?; // Signal end of stream
-          Ok::<(), Box<dyn std::error::Error>>(())
-      });
 
-      // Forward QUIC -> TCP
-      let quic_to_tcp = tokio::spawn(async move {
-          let mut buf = [0; 1024];
-          while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
-              if bytes_read == 0 {
-                  break; // End of stream
-              }
-              tcp_stream.write_all(&buf[..bytes_read]).await?;
-          }
-          Ok::<(), Box<dyn std::error::Error>>(())
-      });
+    debug!("Closed QUIC connection handler");
+    Ok(())
+}
 
-      // Wait for both directions to complete
-      tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
-    */
-    debug!("Closed QUIC stream for TCP connection");
+// Handles individual QUIC streams.
+#[instrument[skip(config, quic_send, quic_recv)]]
+async fn handle_quic_stream(
+    config: Arc<ClientConfig>,
+    mut quic_send: quinn::SendStream,
+    mut quic_recv: quinn::RecvStream,
+) -> Result<(), Error> {
+    let tcp_stream =  // Create TCP connection to remote destination
+        tokio::net::TcpStream::connect(&config.destination_addr)
+            .await
+            .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
+
+    // Forward TCP -> QUIC
+    let tcp_to_quic = tokio::spawn(async move {
+        let mut buf = [0; 1024];
+        while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            quic_send.write_all(&buf[..bytes_read]).await?;
+        }
+        quic_send.finish().await?; // Signal end of stream
+        Ok(())
+    });
+
+    // Forward QUIC -> TCP
+    let quic_to_tcp = tokio::spawn(async move {
+        let mut buf = [0; 1024];
+        while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            tcp_stream.write_all(&buf[..bytes_read]).await?;
+        }
+        Ok(())
+    });
+
+    // Wait for both directions to complete
+    tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
+
     Ok(())
 }

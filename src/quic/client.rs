@@ -15,7 +15,7 @@ use super::ALPN_QUIC_PORTREDIRECT;
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct ClientConfig {
+pub struct ClientConfig<T> {
     pub remote_hostname_match: Option<String>,
     pub ca_path: Option<PathBuf>,
     pub cert_file: PathBuf,
@@ -25,9 +25,11 @@ pub struct ClientConfig {
     pub connection_limit: Option<usize>,
 
     pub pr_psk: SecretString,
+
+    pub app_data: T,
 }
 
-impl ClientConfig {
+impl<T: Default> ClientConfig<T> {
     #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
@@ -35,6 +37,7 @@ impl ClientConfig {
         remote_socket: SocketAddr,
         remote_hostname_match: Option<String>,
         psk: SecretString,
+        app_data: Option<T>,
     ) -> Self {
         ClientConfig {
             remote_hostname_match,
@@ -44,14 +47,15 @@ impl ClientConfig {
             remote_socket,
             connection_limit: None,
             pr_psk: psk,
+            app_data: app_data.unwrap_or_default(),
         }
     }
 }
 
 #[instrument(skip(config, handle_incoming))]
-pub async fn run_quic_client<F, Fut>(config: ClientConfig, handle_incoming: F) -> Result<(), Error>
+pub async fn run_quic_client<F, Fut, T>(config: ClientConfig<T>, handle_incoming: F) -> Result<(), Error>
 where
-    F: Fn(Arc<ClientConfig>, quinn::Connection) -> Fut + Send + Sync + 'static,
+    F: Fn(Arc<ClientConfig<T>>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC client setup");

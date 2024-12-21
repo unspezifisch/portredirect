@@ -4,8 +4,8 @@
 
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
-use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
+use portredirect::{get_config_dir, PortRedirectProtocol};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
@@ -347,14 +347,9 @@ async fn handle_quic_client_connection(
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
     debug!("opened bidi channel for AUTH");
-    
-    send.write_all(b"foo\n").await?;
-    let mut bar_n = [0u8; 4];
-    recv.read_exact(&mut bar_n).await?;
-    debug!("read 4 bytes: {:?}", bar_n);
-        
+
     // Step 1: Generate a challenge
-    // Add a (coarse) timestamp to needlessly.
+    // Add a (coarse) timestamp to guarantee unique challenge.
     let coarse_unix_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() / 60;
 
     // Generate 32 random bytes
@@ -366,16 +361,23 @@ async fn handle_quic_client_connection(
         "this-is-the-challenge-{}-at-{}-pr-v1",
         random_bytes_hex, coarse_unix_time
     );
-    debug!(challenge_len = challenge.len(), challenge=challenge, "AUTH: sending challenge");
+    debug!(
+        challenge_len = challenge.len(),
+        challenge = challenge,
+        "AUTH: sending challenge"
+    );
 
     // Step 2: Send the challenge
     let auth_start = Instant::now();
     let request = format!("WHO THE HECK ARE YOU?\n{}\n", challenge);
+    assert!(
+        request.len() <= PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH,
+        "Challenge string exceeds maximum length"
+    );
     send.write_all(request.as_bytes())
         .await
         .map_err(|e| anyhow!("failed to send AUTH request: {}", e))?;
     send.flush().await?;
-    debug!("sent first data: {:?}", request);
 
     // Step 3: Wait for the client's response
     // SHA-256 is 32 bytes, so hex-encoded length is 64.
@@ -427,15 +429,24 @@ async fn handle_quic_client_connection(
         send.write_all(b"HAPPY\n")
             .await
             .map_err(|e| anyhow!("failed to send HAPPY response: {}", e))?;
+        send.flush().await?;
     } else {
         // Send bad result.
         send.write_all(b"BAD\n")
             .await
             .map_err(|e| anyhow!("failed to send BAD response: {}", e))?;
+        send.flush().await?;
         send.finish()?;
         return Err(anyhow!("Authentication failed, response mismatch"));
     }
-
     debug!("Authenticated PR QUIC client OK");
-    Ok(())
+    
+    // Keep AUTH channel open, we might add some stats transmission later.
+    loop {
+        debug!("handle_quic_client_connection the cool tunnel is active");
+        sleep(Duration::from_secs(30)).await;
+
+        // wait for next incoming external tcp connection
+        
+    }
 }

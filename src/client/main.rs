@@ -3,16 +3,16 @@
 // License: GPL-3.0-only
 
 // TODO import cleanup 2
-use anyhow::{Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
-use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
+use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncWriteExt;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use tracing::{debug, info, instrument, span, Level};
 
@@ -155,22 +155,16 @@ async fn handle_quic_to_tcp(
     while let Ok((mut send, mut recv)) = connection.accept_bi().await {
         debug!("opened bidi channel for AUTH");
 
-        let mut foo_n = [0u8; 4];
-        recv.read_exact(&mut foo_n).await?;
-        debug!("read 4 bytes: {:?}", foo_n);
-        send.write_all(b"bar\n").await?;
-
-        // Read up to n bytes from the QUIC stream
-        let mut buffer = [0u8; 512];
-        recv
-            .read(&mut buffer)
+        // Read challenge from the QUIC stream
+        let mut buffer = [0u8; PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH];
+        recv.read(&mut buffer)
             .await
-            .map_err(|e| anyhow::anyhow!("failed to read from QUIC stream: {}", e))?;
+            .map_err(|e| anyhow!("failed to read from QUIC stream: {}", e))?;
         debug!("got first data: {:?}", buffer);
 
         // Convert the buffer to a string
-        let received = std::str::from_utf8(&buffer)
-            .map_err(|e| anyhow::anyhow!("received invalid UTF-8: {}", e))?;
+        let received =
+            std::str::from_utf8(&buffer).map_err(|e| anyhow!("received invalid UTF-8: {}", e))?;
 
         // Split into lines
         let mut lines = received.lines();
@@ -178,36 +172,62 @@ async fn handle_quic_to_tcp(
         // Validate the first line
         let first_line = lines
             .next()
-            .ok_or_else(|| anyhow::anyhow!("missing first line in authentication message"))?;
+            .ok_or_else(|| anyhow!("missing first line in authentication message"))?;
         if first_line != "WHO THE HECK ARE YOU?" {
-            return Err(anyhow::anyhow!("unexpected first line: {}", first_line));
+            return Err(anyhow!("unexpected first line: {}", first_line));
         }
 
         // Validate the second line (challenge request)
         let second_line = lines
             .next()
-            .ok_or_else(|| anyhow::anyhow!("missing second line in authentication message"))?;
+            .ok_or_else(|| anyhow!("missing second line in authentication message"))?;
         debug!("Received challenge request: {}", second_line);
 
         // Compute the SHA-256 hash and hex-encode it
         let mut hasher = Sha256::new();
         hasher.update(second_line);
         hasher.update(config.pr_psk.expose_secret());
-        let response = hex::encode(hasher.finalize());
-        debug!("Responding with SHA-256 hex: {}", response);
+        let response_hex = hex::encode(hasher.finalize());
+        debug!("Responding with SHA-256 hex: {}", response_hex);
 
         // Send the response to the server
+        let response = response_hex + "\n";
         send.write_all(response.as_bytes())
             .await
-            .map_err(|e| anyhow::anyhow!("failed to send response: {}", e))?;
+            .map_err(|e| anyhow!("failed to send response: {}", e))?;
         send.flush().await?;
 
-        debug!("Authentication response sent.");
+        // We expect a line with HAPPY or BAD.
+        let mut buffer = [0u8; 16];
+        recv.read(&mut buffer)
+            .await
+            .map_err(|e| anyhow!("failed to read from QUIC stream (final): {}", e))?;
+
+        if let Ok(buffer_str) = std::str::from_utf8(&buffer) {
+            if buffer_str[.."HAPPY".len()] == *"HAPPY" {
+                // cool
+                info!("Authentication successful.")
+            } else {
+                // not cool
+                return Err(anyhow!(
+                    "Server was unhappy with our response: {}.",
+                    buffer_str.trim()
+                ));
+            }
+        } else {
+            // not cool either
+            return Err(anyhow!(
+                "Server was so unhappy with our response that it sent garbage."
+            ));
+        }
+
+        debug!("Authentication routine done.");
     }
 
+    // Keep AUTH channel open, we might add some stats transmission later.
     loop {
-        debug!("handle_quic_to_tcp");
-        sleep(Duration::from_secs(10)).await;
+        debug!("handle_quic_to_tcp the cool tunnel is active");
+        sleep(Duration::from_secs(30)).await;
     }
     /*
       // Forward TCP -> QUIC

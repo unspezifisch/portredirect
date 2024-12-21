@@ -14,3 +14,9 @@ pub fn get_config_dir() -> Result<PathBuf> {
 
     Ok(config_dir)
 }
+
+pub struct PortRedirectProtocol;
+
+impl PortRedirectProtocol {
+    pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
+}

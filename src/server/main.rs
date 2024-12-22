@@ -535,8 +535,7 @@ async fn handle_quic_client_connection(
 
     // Keep AUTH channel open, we might add some stats transmission later.
     loop {
-        debug!("handle_quic_client_connection the cool tunnel is active");
-        sleep(Duration::from_secs(23)).await;
+        sleep(PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS).await;
 
         // wait for next incoming external tcp connection
         if let Err(e) = auth_stream_send.write_all(b"PING\n").await {

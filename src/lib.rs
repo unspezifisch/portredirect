@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 pub mod quic;
 
@@ -18,6 +18,7 @@ pub fn get_config_dir() -> Result<PathBuf> {
 pub struct PortRedirectProtocol;
 
 impl PortRedirectProtocol {
+    pub const CONNECTION_KEEPALIVE_INTERVAL_SECONDS: Duration = Duration::from_secs(25);
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
     pub const TCP_QUIC_FORWARDING_BUFFER_SIZE: usize = 1024 * 10;
     pub const TCP_DIRECT_FORWARDING_BUFFER_SIZE: usize = 1024 * 10;

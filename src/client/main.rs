@@ -257,28 +257,34 @@ async fn handle_quic_to_tcp(
         handle_quic_auth(Arc::clone(&config), conn.clone())
             .await
             .context("failed to authenticate against PR QUIC server")?;
-        tokio::spawn(async move {
-            loop {
-                let mut buf = [0u8; 16];
-                match auth_stream_recv.read(&mut buf).await {
-                    Ok(Some(_)) => {
-                        if let Ok(text) = std::str::from_utf8(&buf) {
-                            info!("Received data: {}", text.trim());
+    tokio::spawn(async move {
+        let mut ping_count = 0usize;
+        loop {
+            let mut buf = [0u8; 16];
+            match auth_stream_recv.read(&mut buf).await {
+                Ok(Some(_)) => {
+                    if let Ok(text) = std::str::from_utf8(&buf) {
+                        if text.starts_with("PING") {
+                            ping_count += 1;
+                            info!("Received PING, count: {}", ping_count);
                         } else {
-                            info!("Received data: {:?}", buf);
+                            info!("Received data (text): {}", text.trim());
                         }
-                    }
-                    Err(e) => {
-                        warn!("Error reading from auth stream: {}", e);
-                        break;
-                    }
-                    _ => {
-                        warn!("Stream is finished");
-                        break;
+                    } else {
+                        info!("Received data (buf): {:?}", buf);
                     }
                 }
+                Err(e) => {
+                    warn!("Error reading from auth stream: {}", e);
+                    break;
+                }
+                _ => {
+                    warn!("Stream is finished");
+                    break;
+                }
             }
-        });
+        }
+    });
 
     while let Ok((send, recv)) = conn.accept_bi().await {
         info!("Opened QUIC stream for new forwarded connection");

@@ -280,10 +280,11 @@ where
     server_crypto.alpn_protocols = ALPN_QUIC_PORTREDIRECT.iter().map(|&x| x.into()).collect();
 
     // QUIC server setup.
-    let server_config =
+    let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
-    //let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
-    //transport_config.max_concurrent_uni_streams(0_u8.into());
+    let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
+    transport_config.max_concurrent_uni_streams(0_u8.into());
+    transport_config.max_concurrent_bidi_streams(0_u8.into());
 
     // Start QUIC server listener.
     info!(listen_addr = %config.listen, "Binding QUIC endpoint");

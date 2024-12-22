@@ -2,10 +2,11 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
+use quinn::SendStream;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
@@ -385,7 +386,7 @@ async fn handle_tcp_to_quic_stream(
 async fn handle_quic_client_auth(
     config: Arc<ServerConfig<AppConfig>>,
     conn: quinn::Connection,
-) -> Result<()> {
+) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     debug!("Authenticating PR QUIC client");
 
     // An unknown client just connected, they need to authenticate or get kicked.
@@ -488,21 +489,30 @@ async fn handle_quic_client_auth(
     }
     debug!("Authenticated PR QUIC client OK");
 
-    Ok(())
+    Ok((send, recv))
 }
 
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<Arc<AppConfig>>>,
+    config: Arc<ServerConfig<AppConfig>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
-        "Handling PR QUIC client connection from {}",
+        "Handling potential PR QUIC client connection from {}",
         conn.remote_address()
     );
 
+    // First, ensure the client is authenticated.
+    let (mut auth_stream_send, mut auth_stream_recv) = handle_quic_client_auth(Arc::clone(&config), conn.clone()).await.with_context(|| {
+        format!(
+            "failed to authenticate PR QUIC client from {}",
+            conn.remote_address()
+        )
+    })?;
+
+    // TODO do the tasks still need this conn?
     {
         let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
         *quinn_conn = Some(conn);
@@ -514,6 +524,10 @@ async fn handle_quic_client_connection(
         sleep(Duration::from_secs(23)).await;
 
         // wait for next incoming external tcp connection
+        auth_stream_send.write_all(b"PING\n").await?;
+        auth_stream_send.flush().await?;
+
+        // TODO should we read to clear the recv stream?
     }
 
     {

@@ -165,12 +165,12 @@ async fn main() -> Result<()> {
 async fn handle_quic_auth(
     config: Arc<ClientConfig<AppConfig>>,
     connection: quinn::Connection,
-) -> Result<(), Error> {
+) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     // Accept the first QUIC stream, which is for authenticating us to the server.
     debug!("Accepting server-initiated QUIC stream.");
 
     // Client auth loop. Runs until server is happy.
-    while let Ok((mut send, mut recv)) = connection.accept_bi().await {
+    if let Ok((mut send, mut recv)) = connection.accept_bi().await {
         debug!("opened bidi channel for AUTH");
 
         // Read challenge from the QUIC stream
@@ -237,10 +237,12 @@ async fn handle_quic_auth(
                 "Server was so unhappy with our response that it sent garbage."
             ));
         }
-    }
 
-    debug!("Authentication routine done.");
-    Ok(())
+        debug!("Authentication routine done.");
+        Ok((send, recv))
+    } else {
+        Err(anyhow!("failed to accept bidi AUTH connection"))
+    }
 }
 
 // Handles incoming QUIC streams, forwards them to their destination.
@@ -249,8 +251,34 @@ async fn handle_quic_auth(
 async fn handle_quic_to_tcp(
     config: Arc<ClientConfig<AppConfig>>,
     conn: quinn::Connection,
-) -> Result<(), Error> {
-    handle_quic_auth(Arc::clone(&config), conn.clone()).await?;
+) -> Result<()> {
+    // First, ensure the client is authenticated.
+    let (mut _auth_stream_send, mut auth_stream_recv) =
+        handle_quic_auth(Arc::clone(&config), conn.clone())
+            .await
+            .context("failed to authenticate against PR QUIC server")?;
+        tokio::spawn(async move {
+            loop {
+                let mut buf = [0u8; 16];;
+                match auth_stream_recv.read(&mut buf).await {
+                    Ok(Some(_)) => {
+                        if let Ok(text) = std::str::from_utf8(&buf) {
+                            info!("Received data: {}", text.trim());
+                        } else {
+                            info!("Received data: {:?}", buf);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error reading from auth stream: {}", e);
+                        break;
+                    }
+                    _ => {
+                        warn!("Stream is finished");
+                        break;
+                    }
+                }
+            }
+        });
 
     while let Ok((send, recv)) = conn.accept_bi().await {
         info!("Opened QUIC stream for new forwarded connection");
@@ -313,7 +341,10 @@ async fn handle_quic_stream(
     // Wait for both directions to complete.
     let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
     if let Err(e) = result {
-        return Err(anyhow!("Error in receive side of QUIC tunnel for TCP forwarding: {:?}", e));
+        return Err(anyhow!(
+            "Error in receive side of QUIC tunnel for TCP forwarding: {:?}",
+            e
+        ));
     }
 
     debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);

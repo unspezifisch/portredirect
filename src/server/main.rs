@@ -249,6 +249,7 @@ async fn main() -> Result<()> {
                 Some(quinn_conn) => quinn_conn,
                 None => {
                     error!("Can't accept new TCP connection because we have no QUIC connection");
+                    // TODO do we need to close this connection?
                     continue;
                 }
             };
@@ -384,7 +385,7 @@ async fn handle_tcp_to_quic_stream(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_auth(
-    config: Arc<ServerConfig<AppConfig>>,
+    config: Arc<ServerConfig<Arc<AppConfig>>>,
     conn: quinn::Connection,
 ) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     debug!("Authenticating PR QUIC client");
@@ -496,7 +497,7 @@ async fn handle_quic_client_auth(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<AppConfig>>,
+    config: Arc<ServerConfig<Arc<AppConfig>>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
@@ -505,7 +506,7 @@ async fn handle_quic_client_connection(
     );
 
     // First, ensure the client is authenticated.
-    let (mut auth_stream_send, mut auth_stream_recv) = handle_quic_client_auth(Arc::clone(&config), conn.clone()).await.with_context(|| {
+    let (mut auth_stream_send, mut _auth_stream_recv) = handle_quic_client_auth(Arc::clone(&config), conn.clone()).await.with_context(|| {
         format!(
             "failed to authenticate PR QUIC client from {}",
             conn.remote_address()
@@ -524,8 +525,14 @@ async fn handle_quic_client_connection(
         sleep(Duration::from_secs(23)).await;
 
         // wait for next incoming external tcp connection
-        auth_stream_send.write_all(b"PING\n").await?;
-        auth_stream_send.flush().await?;
+        if let Err(e) = auth_stream_send.write_all(b"PING\n").await {
+            error!("Failed to send PING: {:?}", e);
+            break;
+        }
+        if let Err(e) = auth_stream_send.flush().await {
+            error!("Failed to flush PING: {:?}", e);
+            break;
+        }
 
         // TODO should we read to clear the recv stream?
     }

@@ -40,6 +40,12 @@ impl Default for AppConfig {
     }
 }
 
+#[derive(Debug)]
+struct WorkerBundle {
+    quic_recv: quinn::RecvStream,
+    quic_send: quinn::SendStream,
+}
+
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
 struct Args {
@@ -201,7 +207,7 @@ async fn main() -> Result<()> {
         let (local_socket, _) = match listener.accept().await {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("Failed to accept connection: {}", e);
+                error!("Failed to accept connection: {}", e);
                 continue;
             }
         };
@@ -233,7 +239,31 @@ async fn main() -> Result<()> {
             });
         } else if args.mode == Mode::Quic {
             let stats_clone = Arc::clone(&stats);
-            let app_config_clone = Arc::clone(&app_config);
+
+            let quinn_conn = {
+                let mut quinn_conn = app_config.quinn_connection.lock().unwrap();
+                quinn_conn.clone()
+            };
+            let quinn_conn = match quinn_conn {
+                Some(quinn_conn) => quinn_conn,
+                None => {
+                    error!("Can't accept new TCP connection because we have no QUIC connection");
+                    continue;
+                }
+            };
+
+            let (quic_send, quic_recv) = quinn_conn
+                .open_bi()
+                .await
+                .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
+            let stream_id = quic_send.id();
+            debug!("Opened bidi QUIC stream for TCP forwarding, stream id {}", stream_id);
+
+            let worker_bundle = WorkerBundle {
+                quic_recv,
+                quic_send,
+            };
+
             tokio::spawn(async move {
                 // Increment connection count.
                 {
@@ -243,10 +273,10 @@ async fn main() -> Result<()> {
 
                 // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
                 let start = Instant::now();
-                if let Err(e) = handle_tcp_to_quic_stream(local_socket, app_config_clone).await {
+                if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
                     error!("Error handling QUIC/TCP stream: {:?}", e);
                 }
-                debug!("QUIC/TCP stream terminated after {:?}", start.elapsed());
+                debug!("QUIC/TCP stream terminated after {:?}, stream id {}", start.elapsed(), stream_id);
 
                 // Decrement connection count.
                 {
@@ -274,7 +304,7 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
 
     // Forward data from local to remote.
     let local_to_remote_task: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buffer = [0u8; 1024];
+        let mut buffer = [0u8; PortRedirectProtocol::TCP_DIRECT_FORWARDING_BUFFER_SIZE];
         while let Ok(bytes_read) = local_read.read(&mut buffer).await {
             if bytes_read == 0 {
                 break;
@@ -286,7 +316,7 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
 
     // Forward data from remote to local.
     let remote_to_local_task: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buffer = [0u8; 1024];
+        let mut buffer = [0u8; PortRedirectProtocol::TCP_DIRECT_FORWARDING_BUFFER_SIZE];
         while let Ok(bytes_read) = remote_read.read(&mut buffer).await {
             if bytes_read == 0 {
                 break;
@@ -306,60 +336,45 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
 }
 
 // Handles incoming TCP connections, forwards them to a QUIC stream.
+// TODO consolidate with client/main.rs
 #[allow(unused)]
 async fn handle_tcp_to_quic_stream(
     mut tcp_stream: tokio::net::TcpStream,
-    config: Arc<AppConfig>,
+    mut bundle: WorkerBundle,
 ) -> Result<()> {
-    {
-        let quinn_conn = config.quinn_connection.lock().unwrap();
-        let quinn_conn = match quinn_conn.deref() {
-            Some(quinn_conn) => quinn_conn,
-            None => return Err(anyhow!(
-                "Can't handle incoming TCP connection - No QUIC connection available"
-            )),
-        };
-        let (mut quic_send, mut quic_recv) = quinn_conn
-            .open_bi()
-            .await
-            .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
-        debug!("Opened bidi QUIC stream for TCP forwarding");
+    let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
+
+    // Forward TCP -> QUIC
+    let tcp_to_quic: JoinHandle<Result<()>> = tokio::spawn(async move {
+        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
+        while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            bundle.quic_send.write_all(&buf[..bytes_read]).await?;
+        }
+        bundle.quic_send.finish()?; // Signal end of stream
+        Ok(()) // TODO we could return total byte count
+    });
+
+    // Forward QUIC -> TCP
+    let quic_to_tcp: JoinHandle<Result<()>> = tokio::spawn(async move {
+        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
+        while let Ok(Some(bytes_read)) = bundle.quic_recv.read(&mut buf).await {
+            if bytes_read == 0 {
+                break; // End of stream
+            }
+            tcp_write_half.write_all(&buf[..bytes_read]).await?;
+        }
+        Ok(())
+    });
+
+    // Wait for both directions to complete.
+    let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
+    if let Err(e) = result {
+        return Err(anyhow!("Error in receive side of QUIC tunnel for TCP forwarding: {:?}", e));
     }
 
-    loop {
-        debug!("handle_tcp_to_quic");
-        sleep(Duration::from_secs(10)).await;
-    }
-
-    /* TODO implement forwarding
-      // Forward TCP -> QUIC
-      let tcp_to_quic = tokio::spawn(async move {
-          let mut buf = [0; 1024];
-          while let Ok(bytes_read) = tcp_stream.read(&mut buf).await {
-              if bytes_read == 0 {
-                  break; // End of stream
-              }
-              quic_send.write_all(&buf[..bytes_read]).await?;
-          }
-          quic_send.finish().await?; // Signal end of stream
-          Ok::<(), Box<dyn std::error::Error>>(())
-      });
-
-      // Forward QUIC -> TCP
-      let quic_to_tcp = tokio::spawn(async move {
-          let mut buf = [0; 1024];
-          while let Ok(bytes_read) = quic_recv.read(&mut buf).await {
-              if bytes_read == 0 {
-                  break; // End of stream
-              }
-              tcp_stream.write_all(&buf[..bytes_read]).await?;
-          }
-          Ok::<(), Box<dyn std::error::Error>>(())
-      });
-
-      // Wait for both directions to complete
-      tokio::try_join!(tcp_to_quic, quic_to_tcp)?;
-    */
     debug!("Closed QUIC stream for TCP connection");
     Ok(())
 }

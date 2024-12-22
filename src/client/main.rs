@@ -268,6 +268,7 @@ async fn handle_quic_to_tcp(
 }
 
 // Handles individual QUIC streams.
+// TODO consolidate with server/main.rs
 #[instrument[skip(config, quic_send, quic_recv)]]
 async fn handle_quic_stream(
     config: Arc<ClientConfig<AppConfig>>,
@@ -279,14 +280,14 @@ async fn handle_quic_stream(
             .await
             .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
-    let connection_id = quic_recv.id();
-    debug!("Starting QUIC stream handler for connection {}", connection_id);
+    let stream_id = quic_recv.id();
+    debug!("Starting QUIC->TCP stream handler, stream id {}", stream_id);
 
     let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
 
     // Forward TCP -> QUIC
-    let tcp_to_quic: JoinHandle<Result<(), Error>> = tokio::spawn(async move {
-        let mut buf = [0; 1024];
+    let tcp_to_quic: JoinHandle<Result<()>> = tokio::spawn(async move {
+        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
         while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
             if bytes_read == 0 {
                 break; // End of stream
@@ -298,8 +299,8 @@ async fn handle_quic_stream(
     });
 
     // Forward QUIC -> TCP
-    let quic_to_tcp: JoinHandle<Result<(), Error>> = tokio::spawn(async move {
-        let mut buf = [0; 1024];
+    let quic_to_tcp: JoinHandle<Result<()>> = tokio::spawn(async move {
+        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
         while let Ok(Some(bytes_read)) = quic_recv.read(&mut buf).await {
             if bytes_read == 0 {
                 break; // End of stream
@@ -315,6 +316,6 @@ async fn handle_quic_stream(
         return Err(anyhow!("Error in receive side of QUIC tunnel for TCP forwarding: {:?}", e));
     }
 
-    debug!("Closed QUIC stream handler for connection {}", connection_id);
+    debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
     Ok(())
 }

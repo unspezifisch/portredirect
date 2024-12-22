@@ -1,5 +1,5 @@
+use anyhow::{Context, Result};
 use std::path::PathBuf;
-use anyhow::{Result, Context};
 
 pub mod quic;
 
@@ -19,4 +19,6 @@ pub struct PortRedirectProtocol;
 
 impl PortRedirectProtocol {
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
+    pub const TCP_QUIC_FORWARDING_BUFFER_SIZE: usize = 1024 * 4;
+    pub const TCP_DIRECT_FORWARDING_BUFFER_SIZE: usize = 1024 * 10;
 }

@@ -456,7 +456,7 @@ async fn handle_quic_client_connection(
 ) -> Result<()> {
     debug!("Handling PR QUIC client connection from {}", conn.remote_address());
 
-    handle_quic_client_auth(config, conn).await?;
+    handle_quic_client_auth(Arc::clone(&config), conn.clone()).await?;
 
     // Keep AUTH channel open, we might add some stats transmission later.
     loop {

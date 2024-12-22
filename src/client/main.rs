@@ -246,14 +246,14 @@ async fn handle_quic_auth(
 
 // Handles incoming QUIC streams, forwards them to their destination.
 // Called directly by run_quic_client.
-#[instrument[skip(config, connection)]]
+#[instrument[skip(config, conn)]]
 async fn handle_quic_to_tcp(
     config: Arc<ClientConfig<AppConfig>>,
-    connection: quinn::Connection,
+    conn: quinn::Connection,
 ) -> Result<(), Error> {
-    handle_quic_auth(Arc::clone(&config), connection.clone()).await?;
+    handle_quic_auth(Arc::clone(&config), conn.clone()).await?;
 
-    while let Ok((send, recv)) = connection.accept_bi().await {
+    while let Ok((send, recv)) = conn.accept_bi().await {
         info!("Opened QUIC stream for new forwarded connection");
 
         let config = Arc::clone(&config);

@@ -15,7 +15,7 @@ use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct ServerConfig {
+pub struct ServerConfig<T> {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
     pub key_file: PathBuf,
@@ -25,15 +25,18 @@ pub struct ServerConfig {
     pub connection_limit: Option<usize>,
 
     pub pr_psk: SecretString,
+
+    pub app_data: T,
 }
 
-impl ServerConfig {
+impl<T: Default> ServerConfig<T> {
     #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
         cert_alt_name: String,
         bind_socket: SocketAddr,
         psk: SecretString,
+        app_data: Option<T>,
     ) -> Self {
         ServerConfig {
             cert_hostname: cert_alt_name,
@@ -43,6 +46,7 @@ impl ServerConfig {
             stateless_retry: false,
             connection_limit: None,
             pr_psk: psk,
+            app_data: app_data.unwrap_or_default(),
         }
     }
 }
@@ -247,9 +251,9 @@ pub fn generate_quic_cert(
 }
 
 #[instrument(skip(config, handle_incoming_client))]
-pub async fn run_quic_server<F, Fut>(config: ServerConfig, handle_incoming_client: F) -> Result<()>
+pub async fn run_quic_server<F, Fut, T>(config: ServerConfig<T>, handle_incoming_client: F) -> Result<()>
 where
-    F: Fn(Arc<ServerConfig>, quinn::Connection) -> Fut + Send + Sync + 'static,
+    F: Fn(Arc<ServerConfig<T>>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC server setup");

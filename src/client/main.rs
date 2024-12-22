@@ -2,7 +2,6 @@
 //
 // License: GPL-3.0-only
 
-// TODO import cleanup 2
 use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
@@ -13,7 +12,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, instrument, span, warn, Level};
+use tracing::{debug, info, instrument, span, warn, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]

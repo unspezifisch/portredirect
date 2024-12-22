@@ -10,6 +10,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
+use std::default;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,6 +25,18 @@ use tracing::{debug, error, info, instrument, span, Level};
 enum Mode {
     Quic,
     DirectForwarding,
+}
+
+struct AppConfig {
+    quinn_connection: Arc<Mutex<Option<quinn::Connection>>>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            quinn_connection: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 /// Command-line arguments for the port redirector tool.
@@ -165,11 +178,14 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
+        let app_config = AppConfig::default();
+
         let config = ServerConfig::create_default_config(
             config_dir,
             args.quic_cert_hostname,
             quic_bind_addr,
             quic_psk,
+            Some(app_config),
         );
 
         // Spawn the QUIC server
@@ -339,7 +355,7 @@ async fn handle_tcp_to_quic_stream(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_auth(
-    config: Arc<ServerConfig>,
+    config: Arc<ServerConfig<AppConfig>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!("Authenticating PR QUIC client");
@@ -451,19 +467,29 @@ async fn handle_quic_client_auth(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig>,
+    config: Arc<ServerConfig<AppConfig>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!("Handling PR QUIC client connection from {}", conn.remote_address());
 
-    handle_quic_client_auth(Arc::clone(&config), conn.clone()).await?;
+    {
+        let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
+        *quinn_conn = Some(conn);
+    }
 
     // Keep AUTH channel open, we might add some stats transmission later.
     loop {
         debug!("handle_quic_client_connection the cool tunnel is active");
-        sleep(Duration::from_secs(30)).await;
+        sleep(Duration::from_secs(23)).await;
 
         // wait for next incoming external tcp connection
 
     }
+
+    {
+        let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
+        *quinn_conn = None;
+    }
+
+    Ok(())
 }

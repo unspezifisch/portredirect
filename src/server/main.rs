@@ -10,7 +10,6 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use std::default;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -27,6 +26,7 @@ enum Mode {
     DirectForwarding,
 }
 
+#[derive(Clone)]
 struct AppConfig {
     quinn_connection: Arc<Mutex<Option<quinn::Connection>>>,
 }
@@ -168,6 +168,7 @@ async fn main() -> Result<()> {
     info!("TCP listening on {}", listener.local_addr()?);
 
     // Create QUIC server if needed.
+    let app_config = Arc::new(AppConfig::default());
     if args.mode == Mode::Quic {
         let quic_psk = args
             .quic_psk
@@ -178,14 +179,12 @@ async fn main() -> Result<()> {
 
         info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        let app_config = AppConfig::default();
-
         let config = ServerConfig::create_default_config(
             config_dir,
             args.quic_cert_hostname,
             quic_bind_addr,
             quic_psk,
-            Some(app_config),
+            Some(Arc::clone(&app_config)),
         );
 
         // Spawn the QUIC server
@@ -233,6 +232,7 @@ async fn main() -> Result<()> {
             });
         } else if args.mode == Mode::Quic {
             let stats_clone = Arc::clone(&stats);
+            let app_config_clone = Arc::clone(&app_config);
             tokio::spawn(async move {
                 // Increment connection count.
                 {
@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
 
                 // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
                 let start = Instant::now();
-                if let Err(e) = handle_tcp_to_quic_stream(local_socket).await {
+                if let Err(e) = handle_tcp_to_quic_stream(local_socket, app_config_clone).await {
                     error!("Error handling QUIC/TCP stream: {:?}", e);
                 }
                 debug!("QUIC/TCP stream terminated after {:?}", start.elapsed());
@@ -308,9 +308,19 @@ async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Resu
 #[allow(unused)]
 async fn handle_tcp_to_quic_stream(
     mut tcp_stream: tokio::net::TcpStream,
-) -> Result<(), Box<dyn std::error::Error>> {
+    config: Arc<AppConfig>,
+) -> Result<()> {
+    {
+        let quinn_conn = config.quinn_connection.lock().unwrap();
+        if quinn_conn.is_none() {
+            return Err(anyhow!("Can't handle incoming TCP connection - No QUIC connection available"));
+        }
+
+        let (mut quic_send, mut quic_recv) = quinn_conn.open_bi().await?;
+    }
+
     // Open a new QUIC stream
-    //let (mut quic_send, mut quic_recv) = quic_connection.open_bi().await?;
+    
     debug!("Opened QUIC stream for TCP forwarding");
 
     loop {
@@ -462,15 +472,18 @@ async fn handle_quic_client_auth(
 
     Ok(())
 }
-    
+
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<AppConfig>>,
+    config: Arc<ServerConfig<Arc<AppConfig>>>,
     conn: quinn::Connection,
 ) -> Result<()> {
-    debug!("Handling PR QUIC client connection from {}", conn.remote_address());
+    debug!(
+        "Handling PR QUIC client connection from {}",
+        conn.remote_address()
+    );
 
     {
         let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
@@ -483,7 +496,6 @@ async fn handle_quic_client_connection(
         sleep(Duration::from_secs(23)).await;
 
         // wait for next incoming external tcp connection
-
     }
 
     {

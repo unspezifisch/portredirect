@@ -11,6 +11,7 @@ use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
@@ -312,16 +313,18 @@ async fn handle_tcp_to_quic_stream(
 ) -> Result<()> {
     {
         let quinn_conn = config.quinn_connection.lock().unwrap();
-        if quinn_conn.is_none() {
-            return Err(anyhow!("Can't handle incoming TCP connection - No QUIC connection available"));
-        }
-
-        let (mut quic_send, mut quic_recv) = quinn_conn.open_bi().await?;
+        let quinn_conn = match quinn_conn.deref() {
+            Some(quinn_conn) => quinn_conn,
+            None => return Err(anyhow!(
+                "Can't handle incoming TCP connection - No QUIC connection available"
+            )),
+        };
+        let (mut quic_send, mut quic_recv) = quinn_conn
+            .open_bi()
+            .await
+            .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
+        debug!("Opened bidi QUIC stream for TCP forwarding");
     }
-
-    // Open a new QUIC stream
-    
-    debug!("Opened QUIC stream for TCP forwarding");
 
     loop {
         debug!("handle_tcp_to_quic");

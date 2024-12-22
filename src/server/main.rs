@@ -6,13 +6,11 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
-use quinn::SendStream;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
@@ -242,7 +240,7 @@ async fn main() -> Result<()> {
             let stats_clone = Arc::clone(&stats);
 
             let quinn_conn = {
-                let mut quinn_conn = app_config.quinn_connection.lock().unwrap();
+                let quinn_conn = app_config.quinn_connection.lock().unwrap();
                 quinn_conn.clone()
             };
             let quinn_conn = match quinn_conn {

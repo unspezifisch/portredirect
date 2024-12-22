@@ -259,7 +259,7 @@ async fn handle_quic_to_tcp(
             .context("failed to authenticate against PR QUIC server")?;
         tokio::spawn(async move {
             loop {
-                let mut buf = [0u8; 16];;
+                let mut buf = [0u8; 16];
                 match auth_stream_recv.read(&mut buf).await {
                     Ok(Some(_)) => {
                         if let Ok(text) = std::str::from_utf8(&buf) {

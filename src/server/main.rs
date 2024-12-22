@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
         let mut previous_connection_count = 0;
 
         loop {
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_millis(100)).await;
             let stats = stats_clone.lock().unwrap();
             if previous_connection_count != stats.connection_count || !printed_once {
                 info!("Active connections: {}", stats.connection_count);

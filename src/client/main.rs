@@ -253,7 +253,7 @@ async fn handle_quic_to_tcp(
     conn: quinn::Connection,
 ) -> Result<()> {
     // First, ensure the client is authenticated.
-    let (mut _auth_stream_send, mut auth_stream_recv) =
+    let (mut auth_stream_send, mut auth_stream_recv) =
         handle_quic_auth(Arc::clone(&config), conn.clone())
             .await
             .context("failed to authenticate against PR QUIC server")?;
@@ -267,6 +267,14 @@ async fn handle_quic_to_tcp(
                         if text.starts_with("PING") {
                             ping_count += 1;
                             info!("Received PING, count: {}", ping_count);
+
+                            match auth_stream_send.write_all(b"PONG\n").await {
+                                Ok(()) => (),
+                                _ => {
+                                    warn!("Failed to send PONG");
+                                    break;
+                                }
+                            }
                         } else {
                             info!("Received data (text): {}", text.trim());
                         }
@@ -274,12 +282,12 @@ async fn handle_quic_to_tcp(
                         info!("Received data (buf): {:?}", buf);
                     }
                 }
-                Err(e) => {
-                    warn!("Error reading from auth stream: {}", e);
+                Ok(None) => {
+                    warn!("Stream is finished");
                     break;
                 }
-                _ => {
-                    warn!("Stream is finished");
+                Err(e) => {
+                    warn!("Error reading from auth stream: {}", e);
                     break;
                 }
             }

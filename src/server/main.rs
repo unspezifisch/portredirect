@@ -17,7 +17,7 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, Level};
+use tracing::{debug, error, info, instrument, span, warn, Level};
 
 /// Modes of operation for the port redirector.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -257,7 +257,10 @@ async fn main() -> Result<()> {
                 .await
                 .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
             let stream_id = quic_send.id();
-            debug!("Opened bidi QUIC stream for TCP forwarding, stream id {}", stream_id);
+            debug!(
+                "Opened bidi QUIC stream for TCP forwarding, stream id {}",
+                stream_id
+            );
 
             let worker_bundle = WorkerBundle {
                 quic_recv,
@@ -276,7 +279,11 @@ async fn main() -> Result<()> {
                 if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
                     error!("Error handling QUIC/TCP stream: {:?}", e);
                 }
-                debug!("QUIC/TCP stream terminated after {:?}, stream id {}", start.elapsed(), stream_id);
+                debug!(
+                    "QUIC/TCP stream terminated after {:?}, stream id {}",
+                    start.elapsed(),
+                    stream_id
+                );
 
                 // Decrement connection count.
                 {
@@ -384,10 +391,18 @@ async fn handle_tcp_to_quic_stream(
             );
         }
         Ok((Err(e), _)) | Ok((_, Err(e))) => {
-            return Err(anyhow!("Error in one side of QUIC tunnel for TCP forwarding: {:?}, stream id {}", e, stream_id));
+            return Err(anyhow!(
+                "Error in one side of QUIC tunnel for TCP forwarding: {:?}, stream id {}",
+                e,
+                stream_id
+            ));
         }
         Err(e) => {
-            return Err(anyhow!("Join error in TCP forwarding: {:?}, stream id {}", e, stream_id));
+            return Err(anyhow!(
+                "Join error in TCP forwarding: {:?}, stream id {}",
+                e,
+                stream_id
+            ));
         }
     }
 
@@ -520,12 +535,15 @@ async fn handle_quic_client_connection(
     );
 
     // First, ensure the client is authenticated.
-    let (mut auth_stream_send, mut _auth_stream_recv) = handle_quic_client_auth(Arc::clone(&config), conn.clone()).await.with_context(|| {
-        format!(
-            "failed to authenticate PR QUIC client from {}",
-            conn.remote_address()
-        )
-    })?;
+    let (mut auth_stream_send, mut auth_stream_recv) =
+        handle_quic_client_auth(Arc::clone(&config), conn.clone())
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to authenticate PR QUIC client from {}",
+                    conn.remote_address()
+                )
+            })?;
 
     // TODO do the tasks still need this conn?
     {
@@ -534,10 +552,11 @@ async fn handle_quic_client_connection(
     }
 
     // Keep AUTH channel open, we might add some stats transmission later.
+    let mut pong_count = 0usize;
     loop {
         sleep(PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS).await;
 
-        // wait for next incoming external tcp connection
+        // ping the client
         if let Err(e) = auth_stream_send.write_all(b"PING\n").await {
             error!("Failed to send PING: {:?}", e);
             break;
@@ -547,7 +566,28 @@ async fn handle_quic_client_connection(
             break;
         }
 
-        // TODO should we read to clear the recv stream?
+        // receive response from client
+        let mut response_buf = [0u8; 5];
+        match auth_stream_recv.read(&mut response_buf).await {
+            Ok(Some(n)) => {
+                let response = std::str::from_utf8(&response_buf[..n])?;
+                if response == "PONG\n" {
+                    pong_count += 1;
+                    info!("Received PONG, count: {}", pong_count);
+                } else {
+                    error!("Unexpected response to PING: {:?}", response);
+                    break;
+                }
+            }
+            Ok(None) => {
+                warn!("Stream is finished");
+                break;
+            }
+            Err(e) => {
+                error!("Failed to read PONG: {:?}", e);
+                break;
+            }
+        }
     }
 
     {

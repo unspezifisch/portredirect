@@ -12,7 +12,7 @@ use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;

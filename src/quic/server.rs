@@ -13,23 +13,49 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 
+/// Configuration for the QUIC server.
+///
+/// This struct holds the necessary configuration parameters for setting up a QUIC server.
+///
+/// # Fields
+///
+/// * `cert_hostname` - The hostname for the certificate to use or generate.
+/// * `cert_file` - The path to the certificate to use or generate.
+/// * `key_file` - The path to the private key file to use or generate.
+/// * `listen` - Bind address for the QUIC server.
+/// * `stateless_retry` - Whether to enable stateless retry.
+/// * `connection_limit` - Optional limit on the number of concurrently forwarded connections.
+/// * `pr_psk` - Pre-shared key to authenticate the client to the server.
+/// * `app_data` - Optionally, any application-specific data.
 #[derive(Debug)]
 #[allow(unused)]
 pub struct ServerConfig<T> {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
     pub key_file: PathBuf,
-
     pub listen: SocketAddr,
     pub stateless_retry: bool,
     pub connection_limit: Option<usize>,
-
     pub pr_psk: SecretString,
-
     pub app_data: T,
 }
 
 impl<T: Default> ServerConfig<T> {
+    /// Creates a default server configuration.
+    ///
+    /// This function initializes a `ServerConfig` with default values, using the provided parameters or defaults.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_dir` - The directory where the certificate and key files are located.
+    /// * `cert_alt_name` - The Subject Alternae Name (SAN) for the QUIC server certificate.
+    /// * `bind_socket` - Bind address for the QUIC server.
+    /// * `psk` - Pre-shared key to authenticate the client to the server.
+    /// * `app_data` - Optionally, any application-specific data.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `ServerConfig` instance with the specified and/or default parameters.
     #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
@@ -43,24 +69,24 @@ impl<T: Default> ServerConfig<T> {
             cert_file: config_dir.join("cert.der"),
             key_file: config_dir.join("key.der"),
             listen: bind_socket,
-            stateless_retry: false,
-            connection_limit: None,
+            stateless_retry: true,  // Be more secure by default
+            connection_limit: None, // TODO add fn parameter for this
             pr_psk: psk,
             app_data: app_data.unwrap_or_default(),
         }
     }
 }
 
-/// Attempts to load a QUIC-compatible certificate and private key from the specified file paths.
+/// Loads or generates a QUIC-compatible certificate and private key.
 ///
-/// This function reads a private key and certificate chain from the provided file paths
-/// and attempts to parse them into the required QUIC-compatible formats. It supports
-/// both DER-encoded and PEM-encoded files.
+/// This function attempts to load a certificate and private key from the specified file paths.
+/// If the files do not exist, it generates a self-signed certificate and saves it to the paths.
 ///
 /// # Arguments
 ///
-/// * `key_path` - A `PathBuf` specifying the location of the private key file.
-/// * `cert_path` - A `PathBuf` specifying the location of the certificate chain file.
+/// * `cert_alt_name` - The Subject Alternate Name (SAN) for the certificate.
+/// * `key_path` - The path to the private key file to load, if it exists, or to save the generated key to if it does not.
+/// * `cert_path` - The path to the certificate file, same applies.
 ///
 /// # Returns
 ///
@@ -107,6 +133,22 @@ pub fn load_or_generate_quic_cert(
     }
 }
 
+/// Loads a QUIC-compatible certificate and private key from the specified file paths.
+///
+/// This function reads a private key and certificate chain from the provided file paths
+/// and attempts to parse them into the required QUIC-compatible formats. It supports
+/// both DER-encoded and PEM-encoded files. DER files must have the `.der` extension,
+/// otherwise PEM is assumed.
+///
+/// # Arguments
+///
+/// * `key_path` - The path to the private key file.
+/// * `cert_path` - The path to the certificate chain file.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a tuple with the certificate chain and private key,
+/// in a format suitable for quinn.
 #[allow(unused)]
 #[instrument()]
 pub fn load_quic_cert(
@@ -134,19 +176,18 @@ pub fn load_quic_cert(
     Ok((cert_chain, key))
 }
 
-/// Generates a self-signed certificate and private key, or loads existing ones if they exist.
+/// Generates a self-signed certificate and private key.
 ///
-/// This function checks for the presence of the certificate and private key at the specified paths.
-/// If either is missing, it generates a self-signed certificate using the provided alternative
+/// This function generates a self-signed certificate using the provided alternative
 /// name for the certificate (e.g., a domain name or IP address). The generated files are saved
 /// to the specified paths. The function then loads the certificate and private key into
 /// QUIC-compatible formats.
 ///
 /// # Arguments
 ///
-/// * `cert_alt_name` - A `String` specifying the subject alternative name for the self-signed certificate.
-/// * `key_path` - A `PathBuf` specifying the location to save or load the private key.
-/// * `cert_path` - A `PathBuf` specifying the location to save or load the certificate.
+/// * `cert_alt_name` - The alternative name for the certificate.
+/// * `key_path` - The path to save the private key.
+/// * `cert_path` - The path to save the certificate.
 ///
 /// # Returns
 ///
@@ -219,39 +260,47 @@ pub fn load_quic_cert(
 ///
 /// Note: This function is suitable for development and testing purposes. For production,
 /// use a trusted certificate authority to issue certificates.
-#[allow(unused)]
 #[instrument()]
 pub fn generate_quic_cert(
     cert_alt_name: String,
     key_path: PathBuf,
     cert_path: PathBuf,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
-    let path = get_config_dir().unwrap();
-    let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
-        Ok((cert, key)) => (
-            CertificateDer::from(cert),
-            PrivateKeyDer::try_from(key).map_err(anyhow::Error::msg)?,
-        ),
-        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-            info!("generating self-signed certificate");
-            let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name]).unwrap();
-            let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-            let cert = cert.cert.into();
-            fs::create_dir_all(path).context("failed to create certificate directory")?;
-            fs::write(&cert_path, &cert).context("failed to write certificate")?;
-            fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
-            (cert, key.into())
-        }
-        Err(e) => {
-            bail!("failed to read certificate: {}", e);
-        }
-    };
+    info!("generating self-signed certificate");
+    let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name]).unwrap();
+    let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
 
-    Ok((vec![cert], key))
+    // Create directories if they don't exist.
+    let path = get_config_dir().unwrap();
+    fs::create_dir_all(path).context("failed to create certificate directory")?;
+
+    // Write certificate and private key to files.
+    let cert = CertificateDer::from(cert.cert);
+    fs::write(&cert_path, &cert).context("failed to write certificate")?;
+    fs::write(&key_path, key.secret_pkcs8_der()).context("failed to write private key")?;
+
+    Ok((vec![cert], key.into()))
 }
 
+/// Runs the QUIC server with the specified configuration and client handler.
+///
+/// This function sets up and runs a QUIC server using the provided configuration and
+/// client connection handler. It handles incoming connections and spawns tasks to
+/// process them.
+///
+/// # Arguments
+///
+/// * `config` - The server configuration.
+/// * `handle_incoming_client` - A function to handle incoming client connections.
+///
+/// # Returns
+///
+/// Returns a `Result` indicating the success or failure of the server operation.
 #[instrument(skip(config, handle_incoming_client))]
-pub async fn run_quic_server<F, Fut, T>(config: ServerConfig<T>, handle_incoming_client: F) -> Result<()>
+pub async fn run_quic_server<F, Fut, T>(
+    config: ServerConfig<T>,
+    handle_incoming_client: F,
+) -> Result<()>
 where
     F: Fn(Arc<ServerConfig<T>>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,

@@ -102,18 +102,35 @@ impl<T: Default> ServerConfig<T> {
 ///
 /// ```rust
 /// use std::path::PathBuf;
-/// use anyhow::Result;
+/// use anyhow::{Result, ensure};
+/// use tempfile::TempDir;
 /// use portredirect::quic::server::load_or_generate_quic_cert;
 ///
 /// fn main() -> Result<()> {
-///     let key_path = PathBuf::from("TEST-key-NONEXISTENT.pem");
-///     let cert_path = PathBuf::from("TEST-cert-NONEXISTENT.pem");
+///     // Set up a temporary directory for testing.
+///     let temp_dir = TempDir::new()?;
+///     let cert_path = temp_dir.path().join("test_cert.der");
+///     let key_path = temp_dir.path().join("test_key.der");
 ///
-///     let result = load_or_generate_quic_cert(key_path, cert_path);
+///     println!("Trying to load non-existent test files: cert {:?}, key {:?}", cert_path, key_path);
 ///
-///     // Assert that an error is returned
-///     assert!(result.is_err(), "Expected an error for nonexistent files");
+///     let result = load_or_generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone());
 ///
+///     // Assert that no error is returned
+///     assert!(result.is_ok(), "Expected no error for nonexistent files");
+///
+///     // Validate that the certificate and key files were written.
+///     ensure!(
+///         cert_path.exists(),
+///         "Certificate file was not created at {:?}",
+///         cert_path
+///     );
+///     ensure!(
+///         key_path.exists(),
+///         "Private key file was not created at {:?}",
+///         key_path
+///     );
+/// 
 ///     Ok(())
 /// }
 /// ```
@@ -149,7 +166,31 @@ pub fn load_or_generate_quic_cert(
 ///
 /// Returns a `Result` containing a tuple with the certificate chain and private key,
 /// in a format suitable for quinn.
-#[allow(unused)]
+/// 
+/// # Examples
+///
+/// ```rust
+/// use std::path::PathBuf;
+/// use anyhow::Result;
+/// use tempfile::TempDir;
+/// use portredirect::quic::server::load_quic_cert;
+///
+/// fn main() -> Result<()> {
+///     // Set up a temporary directory for testing.
+///     let temp_dir = TempDir::new()?;
+///     let cert_path = temp_dir.path().join("test_cert.der");
+///     let key_path = temp_dir.path().join("test_key.der");
+///
+///     println!("Trying to load non-existent test files: cert {:?}, key {:?}", cert_path, key_path);
+///
+///     let result = load_quic_cert(key_path, cert_path);
+///
+///     // Assert that an error is returned
+///     assert!(result.is_err(), "Expected an error for nonexistent files");
+///
+///     Ok(())
+/// }
+/// ```
 #[instrument()]
 pub fn load_quic_cert(
     key_path: PathBuf,

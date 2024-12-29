@@ -28,7 +28,6 @@ use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 /// * `pr_psk` - Pre-shared key to authenticate the client to the server.
 /// * `app_data` - Optionally, any application-specific data.
 #[derive(Debug)]
-#[allow(unused)]
 pub struct ServerConfig<T> {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
@@ -56,7 +55,6 @@ impl<T: Default> ServerConfig<T> {
     /// # Returns
     ///
     /// Returns a `ServerConfig` instance with the specified and/or default parameters.
-    #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
         cert_alt_name: String,
@@ -135,8 +133,6 @@ impl<T: Default> ServerConfig<T> {
 /// }
 /// ```
 ///
-/// Note: Ensure that the file paths provided are accessible and have the correct permissions.
-#[allow(unused)]
 #[instrument()]
 pub fn load_or_generate_quic_cert(
     cert_alt_name: String,
@@ -156,6 +152,8 @@ pub fn load_or_generate_quic_cert(
 /// and attempts to parse them into the required QUIC-compatible formats. It supports
 /// both DER-encoded and PEM-encoded files. DER files must have the `.der` extension,
 /// otherwise PEM is assumed.
+///
+/// Note: Ensure that the file paths provided are accessible and have the correct permissions.
 ///
 /// # Arguments
 ///
@@ -223,6 +221,9 @@ pub fn load_quic_cert(
 /// name for the certificate (e.g., a domain name or IP address). The generated files are saved
 /// to the specified paths. The function then loads the certificate and private key into
 /// QUIC-compatible formats.
+/// 
+/// Note: This function is suitable for development and testing purposes. For production,
+/// use a trusted certificate authority to issue certificates.
 ///
 /// # Arguments
 ///
@@ -292,9 +293,6 @@ pub fn load_quic_cert(
 ///     Ok(())
 /// }
 /// ```
-///
-/// Note: This function is suitable for development and testing purposes. For production,
-/// use a trusted certificate authority to issue certificates.
 #[instrument()]
 pub fn generate_quic_cert(
     cert_alt_name: String,

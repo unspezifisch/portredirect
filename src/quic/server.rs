@@ -103,13 +103,13 @@ impl<T: Default> ServerConfig<T> {
 /// ```rust
 /// use std::path::PathBuf;
 /// use anyhow::Result;
-/// use portredirect::quic::try_load_quic_cert;
+/// use portredirect::quic::server::load_or_generate_quic_cert;
 ///
 /// fn main() -> Result<()> {
 ///     let key_path = PathBuf::from("TEST-key-NONEXISTENT.pem");
 ///     let cert_path = PathBuf::from("TEST-cert-NONEXISTENT.pem");
 ///
-///     let result = try_load_quic_cert(key_path, cert_path);
+///     let result = load_or_generate_quic_cert(key_path, cert_path);
 ///
 ///     // Assert that an error is returned
 ///     assert!(result.is_err(), "Expected an error for nonexistent files");
@@ -192,8 +192,8 @@ pub fn load_quic_cert(
 /// # Returns
 ///
 /// Returns a `Result` containing a tuple:
-/// * `Vec<CertificateDer<'static>>` - The parsed certificate chain as DER-encoded certificates.
-/// * `PrivateKeyDer<'static>` - The parsed private key in a QUIC-compatible format.
+/// * `Vec<CertificateDer<_>>` - The parsed certificate chain as DER-encoded certificates.
+/// * `PrivateKeyDer<_>` - The parsed private key in a QUIC-compatible format.
 ///
 /// On success, the tuple contains the certificate chain and private key. On failure,
 /// it returns an `anyhow::Error` describing the issue encountered during file reading,
@@ -204,24 +204,23 @@ pub fn load_quic_cert(
 /// ```rust
 /// use std::fs;
 /// use std::path::PathBuf;
-/// use tempfile::NamedTempFile;
+/// use tempfile::TempDir;
 /// use anyhow::{ensure, Context, Result};
 /// use rcgen::{generate_simple_self_signed, KeyPair, CertifiedKey};
-/// use portredirect::quic::{generate_quic_cert, try_load_quic_cert};
+/// use portredirect::quic::server::generate_quic_cert;
 ///
 /// fn main() -> Result<()> {
-///     // Create temporary file paths for the certificate and key.
-///     let cert_temp = NamedTempFile::new()?;
-///     let key_temp = NamedTempFile::new()?;
+///     // Set up a temporary directory for testing.
+///     let temp_dir = TempDir::new()?;
+///     let cert_path = temp_dir.path().join("test_cert.der");
+///     let key_path = temp_dir.path().join("test_key.der");
 ///
-///     let cert_path = cert_temp.path().to_path_buf();
-///     let key_path = key_temp.path().to_path_buf();
 ///     println!("Test files: cert {:?}, key {:?}", cert_path, key_path);
 ///
 ///     // Generate the self-signed certificate and private key.
-///     generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone())?;
+///     let (cert_chain, private_key) = generate_quic_cert("localhost".into(), key_path.clone(), cert_path.clone())?;
 ///
-///     // Check that the certificate and key files exist.
+///     // Validate that the certificate and key files were written.
 ///     ensure!(
 ///         cert_path.exists(),
 ///         "Certificate file was not created at {:?}",
@@ -233,26 +232,21 @@ pub fn load_quic_cert(
 ///         key_path
 ///     );
 ///
-///     // Validate the written certificate and key.
-///     let cert_pem = fs::read_to_string(&cert_path).context("failed to read certificate")?;
-///     let key_pem = fs::read_to_string(&key_path).context("failed to read private key")?;
+///     // Load and verify the written certificate and key.
+///     let loaded_cert = fs::read(&cert_path).context("failed to read certificate")?;
+///     let loaded_key = fs::read(&key_path).context("failed to read private key")?;
 ///
-///     // Parse the key pair and ensure it matches the certificate.
-///     let parsed_key_pair = KeyPair::from_pem(&key_pem).context("failed to parse private key")?;
+///     // Ensure the loaded values match the returned outputs.
 ///     ensure!(
-///         parsed_key_pair.compatible_algs().next().is_some(),
-///         "The public key in the certificate does not match the private key"
+///         loaded_cert == cert_chain[0].as_ref(),
+///         "Loaded certificate does not match generated certificate"
+///     );
+///     ensure!(
+///         loaded_key == private_key.secret_der(),
+///         "Loaded private key does not match generated key"
 ///     );
 ///
-///     println!("Certificate and key generated! Trying to load them...");
-///
-///     // Attempt to load the generated certificate and key.
-///     let result = try_load_quic_cert(key_path.clone(), cert_path.clone())?;
-///
-///     // Validate that the loading succeeded.
-///     assert!(result.0.len() > 0, "Expected at least one certificate in the chain");
-///
-///     println!("Certificate and key loading succeeded!");
+///     println!("Certificate and key successfully generated and verified!");
 ///
 ///     Ok(())
 /// }

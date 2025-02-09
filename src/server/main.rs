@@ -18,26 +18,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, warn, Level};
-
-/// Modes of operation for the port redirector.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum Mode {
-    Quic,
-    DirectForwarding,
-}
-
-#[derive(Clone)]
-struct AppConfig {
-    quinn_connection: Arc<Mutex<Option<quinn::Connection>>>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        AppConfig {
-            quinn_connection: Arc::new(Mutex::new(None)),
-        }
-    }
-}
+use portredirect::PRAppData;
 
 #[derive(Debug)]
 struct WorkerBundle {
@@ -79,10 +60,6 @@ struct Args {
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
     quic_psk: Option<SecretString>,
-
-    /// Mode of operation: quic or direct-forwarding.
-    #[clap(long, value_enum)]
-    mode: Mode,
 }
 
 /// Data structure to hold connection statistics.
@@ -111,34 +88,19 @@ async fn main() -> Result<()> {
     let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
 
-    if args.mode == Mode::DirectForwarding {
-        // Ensure required arguments are provided
-        match (args.remote_host.as_ref(), args.remote_port) {
-            (Some(host), Some(port)) => {
-                remote_addr = format!("{}:{}", host, port);
-            }
-            _ => {
-                error!("Error: --remote-host and --remote-port must be specified in DirectForwarding mode.");
-                std::process::exit(1);
-            }
+    match (args.quic_server_host, args.quic_server_port, &args.quic_psk) {
+        (quic_server_host, Some(quic_server_port), Some(_)) => {
+            // Parameters are complete.
+            quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
+                .to_socket_addrs()
+                .expect("Invalid host or port")
+                .next()
+                .expect("Unable to resolve address");
         }
-    } else if args.mode == Mode::Quic {
-        match (args.quic_server_host, args.quic_server_port, &args.quic_psk) {
-            (quic_server_host, Some(quic_server_port), Some(_)) => {
-                // Parameters are complete.
-                quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
-                    .to_socket_addrs()
-                    .expect("Invalid host or port")
-                    .next()
-                    .expect("Unable to resolve address");
-            }
-            _ => {
-                error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
-                std::process::exit(1);
-            }
+        _ => {
+            error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
+            std::process::exit(1);
         }
-    } else {
-        unreachable!();
     }
 
     // Shared state for connection statistics.
@@ -173,33 +135,32 @@ async fn main() -> Result<()> {
     })?;
     info!("TCP listening on {}", listener.local_addr()?);
 
-    // Create QUIC server if needed.
-    let app_config = Arc::new(AppConfig::default());
-    if args.mode == Mode::Quic {
-        let quic_psk = args
-            .quic_psk
-            .expect("PSK is required for QUIC PR operation");
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect("Failed to install rustls crypto provider");
+    // Create QUIC server.
+    let quic_psk = args
+        .quic_psk
+        .expect("PSK is required for QUIC PR operation");
+    let app_config = Arc::new(PRAppData::new(quic_psk));
 
-        info!("QUIC listening on {}", quic_bind_addr.clone());
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
-        let config = ServerConfig::create_default_config(
-            config_dir,
-            args.quic_cert_hostname,
-            quic_bind_addr,
-            None,
-            Some(Arc::clone(&app_config)),
-        );
+    info!("QUIC listening on {}", quic_bind_addr.clone());
 
-        // Spawn the QUIC server
-        tokio::spawn(async {
-            if let Err(e) = run_quic_server(config, handle_quic_client_connection).await {
-                error!(error = %e, "QUIC thread error");
-            }
-        });
-    }
+    let config = ServerConfig::create_default_config(
+        config_dir,
+        args.quic_cert_hostname,
+        quic_bind_addr,
+        None,
+        Some(Arc::clone(&app_config)),
+    );
+
+    // Spawn the QUIC server
+    tokio::spawn(async {
+        if let Err(e) = run_quic_server(config, handle_quic_client_connection).await {
+            error!(error = %e, "QUIC thread error");
+        }
+    });
 
     // Handle incoming TCP connections forever.
     loop {
@@ -212,88 +173,60 @@ async fn main() -> Result<()> {
         };
         debug!("New TCP connection from: {:?}", local_socket.peer_addr());
 
-        if args.mode == Mode::DirectForwarding {
-            let remote_addr = remote_addr.clone();
-            let stats_clone = Arc::clone(&stats);
+        let stats_clone = Arc::clone(&stats);
 
-            tokio::spawn(async move {
-                // Increment connection count.
-                {
-                    let mut stats = stats_clone.lock().unwrap();
-                    stats.connection_count += 1;
-                }
+        let quinn_conn = {
+            let quinn_conn = app_config.quinn_connection.lock().unwrap();
+            quinn_conn.clone()
+        };
+        let quinn_conn = match quinn_conn {
+            Some(quinn_conn) => quinn_conn,
+            None => {
+                error!("Can't accept new TCP connection because we have no QUIC connection");
+                // TODO do we need to close this connection?
+                continue;
+            }
+        };
 
-                // Bridge data to outgoing TCP connection.
-                let start = Instant::now();
-                if let Err(e) = handle_tcp_to_tcp(local_socket, remote_addr).await {
-                    error!("Error handling outgoing TCP connection: {:?}", e);
-                }
-                debug!("Outgoing TCP stream terminated after {:?}", start.elapsed());
+        let (quic_send, quic_recv) = quinn_conn
+            .open_bi()
+            .await
+            .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
+        let stream_id = quic_send.id();
+        debug!(
+            "Opened bidi QUIC stream for TCP forwarding, stream id {}",
+            stream_id
+        );
 
-                // Decrement connection count.
-                {
-                    let mut stats = stats_clone.lock().unwrap();
-                    stats.connection_count -= 1;
-                }
-            });
-        } else if args.mode == Mode::Quic {
-            let stats_clone = Arc::clone(&stats);
+        let worker_bundle = WorkerBundle {
+            quic_recv,
+            quic_send,
+        };
 
-            let quinn_conn = {
-                let quinn_conn = app_config.quinn_connection.lock().unwrap();
-                quinn_conn.clone()
-            };
-            let quinn_conn = match quinn_conn {
-                Some(quinn_conn) => quinn_conn,
-                None => {
-                    error!("Can't accept new TCP connection because we have no QUIC connection");
-                    // TODO do we need to close this connection?
-                    continue;
-                }
-            };
+        tokio::spawn(async move {
+            // Increment connection count.
+            {
+                let mut stats = stats_clone.lock().unwrap();
+                stats.connection_count += 1;
+            }
 
-            let (quic_send, quic_recv) = quinn_conn
-                .open_bi()
-                .await
-                .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
-            let stream_id = quic_send.id();
+            // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
+            let start = Instant::now();
+            if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
+                error!("Error handling QUIC/TCP stream: {:?}", e);
+            }
             debug!(
-                "Opened bidi QUIC stream for TCP forwarding, stream id {}",
+                "QUIC/TCP stream terminated after {:?}, stream id {}",
+                start.elapsed(),
                 stream_id
             );
 
-            let worker_bundle = WorkerBundle {
-                quic_recv,
-                quic_send,
-            };
-
-            tokio::spawn(async move {
-                // Increment connection count.
-                {
-                    let mut stats = stats_clone.lock().unwrap();
-                    stats.connection_count += 1;
-                }
-
-                // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
-                let start = Instant::now();
-                if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
-                    error!("Error handling QUIC/TCP stream: {:?}", e);
-                }
-                debug!(
-                    "QUIC/TCP stream terminated after {:?}, stream id {}",
-                    start.elapsed(),
-                    stream_id
-                );
-
-                // Decrement connection count.
-                {
-                    let mut stats = stats_clone.lock().unwrap();
-                    stats.connection_count -= 1;
-                }
-            });
-        } else {
-            unreachable!();
-        }
+            // Decrement connection count.
+            {
+                let mut stats = stats_clone.lock().unwrap();
+                stats.connection_count -= 1;
+            }
+        });
     }
 }
 
@@ -414,7 +347,7 @@ async fn handle_tcp_to_quic_stream(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_auth(
-    config: Arc<ServerConfig<Arc<AppConfig>>>,
+    config: Arc<ServerConfig<Arc<PRAppData>>>,
     conn: quinn::Connection,
 ) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     debug!("Authenticating PR QUIC client");
@@ -498,7 +431,7 @@ async fn handle_quic_client_auth(
     // Step 4: Compute expected response
     let mut hasher = Sha256::new();
     hasher.update(challenge);
-    hasher.update(config.pr_psk.expose_secret());
+    hasher.update(config.app_data.connection_auth_psk.expose_secret());
     let expected_response = hex::encode(hasher.finalize()) + "\n";
 
     // Step 5: Validate the client's response
@@ -526,7 +459,7 @@ async fn handle_quic_client_auth(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<Arc<AppConfig>>>,
+    config: Arc<ServerConfig<Arc<PRAppData>>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!(

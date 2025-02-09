@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::{path::PathBuf, time::Duration};
 
 pub mod quic;
+pub mod types;
 
 /// Returns the path to the configuration directory, creating it if necessary.
 pub fn get_config_dir() -> Result<PathBuf> {

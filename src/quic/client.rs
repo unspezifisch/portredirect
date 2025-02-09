@@ -14,7 +14,7 @@ use super::ALPN_QUIC_PORTREDIRECT;
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct ClientConfig<T> {
+pub struct ClientConfig<AppDataType> {
     pub remote_hostname_match: Option<String>,
     pub ca_path: Option<PathBuf>,
     pub cert_file: PathBuf,
@@ -23,10 +23,10 @@ pub struct ClientConfig<T> {
     pub remote_socket: SocketAddr,
     pub connection_limit: Option<usize>,
 
-    pub app_data: T,
+    pub app_data: AppDataType,
 }
 
-impl<T: Default> ClientConfig<T> {
+impl<AppDataType> ClientConfig<AppDataType> {
     #[allow(unused)]
     pub fn create_default_config(
         config_dir: PathBuf,
@@ -34,7 +34,7 @@ impl<T: Default> ClientConfig<T> {
         remote_socket: SocketAddr,
         remote_hostname_match: Option<String>,
         connection_limit: Option<usize>,
-        app_data: Option<T>,
+        app_data: AppDataType,
     ) -> Self {
         ClientConfig {
             remote_hostname_match,
@@ -43,7 +43,7 @@ impl<T: Default> ClientConfig<T> {
             local_socket,
             remote_socket,
             connection_limit,
-            app_data: app_data.unwrap_or_default(),
+            app_data,
         }
     }
 }

@@ -2,6 +2,7 @@
 
 use anyhow::Error;
 use portredirect::quic::{client, server};
+use portredirect::types::PRAppData;
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -26,29 +27,33 @@ async fn test_quic_end_to_end_minimal() {
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
+    // PSK is required so this tests needs one.
+    let test_psk = SecretString::new("test_psk".into());
+
     // Setup temporary config paths for certificates
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let config_dir = temp_dir.path().to_path_buf();
     info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
+    let app_data = PRAppData::new(test_psk);
     let test_port = 65500; // HACK statically chosen port
-    let server_config: server::ServerConfig<()> = server::ServerConfig::create_default_config(
+    let server_config: server::ServerConfig<PRAppData> = server::ServerConfig::create_default_config(
         config_dir.clone(),
         "localhost".to_string(),
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
         None,
-        None,
+        app_data,
     );
     info!("Server config: {:?}", server_config);
 
-    let client_config: client::ClientConfig<()> = client::ClientConfig::create_default_config(
+    let client_config: client::ClientConfig<PRAppData> = client::ClientConfig::create_default_config(
         config_dir,
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
         Some("localhost".to_string()),
         None,
-        None,
+        app_data,
     );
     info!("Client config: {:?}", client_config);
 

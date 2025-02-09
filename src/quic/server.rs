@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::{pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer}, unbuffered::AppDataRecord};
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -26,17 +26,17 @@ use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 /// * `connection_limit` - Optional limit on the number of concurrently forwarded connections.
 /// * `app_data` - Optionally, any application-specific data.
 #[derive(Debug)]
-pub struct ServerConfig<T> {
+pub struct ServerConfig<AppDataType> {
     pub cert_hostname: String,
     pub cert_file: PathBuf,
     pub key_file: PathBuf,
     pub listen: SocketAddr,
     pub stateless_retry: bool,
     pub connection_limit: Option<usize>,
-    pub app_data: T,
+    pub app_data: AppDataType,
 }
 
-impl<T: Default> ServerConfig<T> {
+impl<AppDataType> ServerConfig<AppDataType> {
     /// Creates a default server configuration.
     ///
     /// This function initializes a `ServerConfig` with default values, using the provided parameters or defaults.
@@ -57,7 +57,7 @@ impl<T: Default> ServerConfig<T> {
         cert_alt_name: String,
         bind_socket: SocketAddr,
         connection_limit: Option<usize>,
-        app_data: Option<T>,
+        app_data: AppDataType,
     ) -> Self {
         ServerConfig {
             cert_hostname: cert_alt_name,
@@ -66,7 +66,7 @@ impl<T: Default> ServerConfig<T> {
             listen: bind_socket,
             stateless_retry: true, // Be more secure by default
             connection_limit,
-            app_data: app_data.unwrap_or_default(),
+            app_data,
         }
     }
 }

@@ -24,7 +24,7 @@ use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 /// * `listen` - Bind address for the QUIC server.
 /// * `stateless_retry` - Whether to enable stateless retry.
 /// * `connection_limit` - Optional limit on the number of concurrently forwarded connections.
-/// * `app_data` - Optionally, any application-specific data.
+/// * `app_data` - Application-specific data.
 #[derive(Debug)]
 pub struct ServerConfig<AppDataType> {
     pub cert_hostname: String,

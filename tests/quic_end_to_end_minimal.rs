@@ -1,11 +1,11 @@
-// End-to-End Tests for the QUIC Client-Server Setup
+// Minimal End-to-End Test for the PortRedirect/QUIC Client-Server Setup
 
 use anyhow::Error;
 use portredirect::quic::{client, server};
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile;
 use tokio::sync::Notify;
 use tokio::time::{timeout, Duration};
 use tracing::info;
@@ -14,7 +14,7 @@ use tracing::info;
 // successfully establish a connection. The server and client are run in separate tasks, and the
 // test waits for the server and client to signal that a connection has been established.
 #[tokio::test]
-async fn test_quic_connection() {
+async fn test_quic_end_to_end_minimal() {
     // Initialize the tracing subscriber for logging
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -27,11 +27,12 @@ async fn test_quic_connection() {
         .expect("Failed to install rustls crypto provider");
 
     // Setup temporary config paths for certificates
-    let config_dir = PathBuf::from(std::env::temp_dir());
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+    let config_dir = temp_dir.path().to_path_buf();
     info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
-    let test_port = 65500;
+    let test_port = 65500; // HACK statically chosen port
     let server_config: server::ServerConfig<()> = server::ServerConfig::create_default_config(
         config_dir.clone(),
         "localhost".to_string(),

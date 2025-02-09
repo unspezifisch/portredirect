@@ -6,7 +6,6 @@ use portredirect::quic::{client, server};
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use tempfile;
 use tokio::sync::Notify;
 use tokio::time::{timeout, Duration};
 use tracing::info;

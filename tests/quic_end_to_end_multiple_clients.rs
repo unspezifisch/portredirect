@@ -8,7 +8,6 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use tempfile;
 use tokio::sync::Notify;
 use tokio::time::{timeout, Duration};
 use tracing::info;

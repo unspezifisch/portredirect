@@ -1,6 +1,6 @@
 use std::fmt;
 use std::net::SocketAddr;
-use std::sync::{atomic::AtomicUsize, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
 use secrecy::SecretString;
 

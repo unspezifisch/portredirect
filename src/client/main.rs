@@ -9,7 +9,7 @@ use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;

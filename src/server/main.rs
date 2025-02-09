@@ -3,7 +3,7 @@
 // License: GPL-3.0-only
 
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use portredirect::app_data::ServerAppData;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::{get_config_dir, ByteCount, PortRedirectProtocol};
@@ -15,7 +15,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, warn, Level};
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
 
     // Parse args.
     let args = Args::parse();
-    let mut remote_addr = String::new();
+    let remote_addr = String::new();
     let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
 

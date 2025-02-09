@@ -320,6 +320,9 @@ pub fn generate_quic_cert(
 /// This function sets up and runs a QUIC server using the provided configuration and
 /// client connection handler. It handles incoming connections and spawns tasks to
 /// process them.
+/// 
+/// Prerequisite: A rustls CryptoProvider must be available before calling this function,
+/// call CryptoProvider::install_default() before this point.
 ///
 /// # Arguments
 ///

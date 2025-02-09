@@ -52,6 +52,8 @@ impl<T: Default> ClientConfig<T> {
     }
 }
 
+/// Prerequisite: A rustls CryptoProvider must be available before calling this function,
+/// call CryptoProvider::install_default() before this point.
 #[instrument(skip(config, handle_incoming))]
 pub async fn run_quic_client<F, Fut, T>(config: ClientConfig<T>, handle_incoming: F) -> Result<(), Error>
 where

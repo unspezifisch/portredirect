@@ -7,8 +7,8 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Notify;
-use tracing::info;
 use tokio::time::{timeout, Duration};
+use tracing::info;
 
 #[tokio::test]
 async fn test_quic_connection() {
@@ -17,6 +17,11 @@ async fn test_quic_connection() {
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer() // Ensures logs appear during `cargo test`
         .try_init();
+
+    // Install the default crypto provider for QUIC
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
     // Setup temporary config paths for certificates
     let config_dir = PathBuf::from(std::env::temp_dir());
@@ -51,24 +56,31 @@ async fn test_quic_connection() {
                 notify_inner.notify_one();
                 Ok(())
             }
-        }).await {
+        })
+        .await
+        {
             Ok(_) => info!("Server finished successfully"),
             Err(e) => panic!("Server error: {:?}", e),
         }
     });
-    
+
     let client_handle: tokio::task::JoinHandle<Result<(), Error>> = tokio::spawn(async move {
         match client::run_quic_client(client_config, |_, _conn| async move {
             info!("Client: Connection established");
             Ok(())
-        }).await {
+        })
+        .await
+        {
             Ok(result) => Ok(result),
             Err(e) => panic!("Client error: {:?}", e),
         }
     });
 
     let notify_result = timeout(Duration::from_secs(5), notify.notified()).await;
-    assert!(notify_result.is_ok(), "Server did not signal within timeout");
+    assert!(
+        notify_result.is_ok(),
+        "Server did not signal within timeout"
+    );
 
     // Await the client result.
     let client_result = client_handle.await.unwrap();

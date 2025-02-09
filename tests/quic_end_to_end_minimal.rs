@@ -1,8 +1,8 @@
 // Minimal End-to-End Test for the PortRedirect/QUIC Client-Server Setup
 
 use anyhow::Error;
+use portredirect::app_data::{ClientAppData, ServerAppData};
 use portredirect::quic::{client, server};
-use portredirect::types::PRAppData;
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -28,7 +28,9 @@ async fn test_quic_end_to_end_minimal() {
         .expect("Failed to install rustls crypto provider");
 
     // PSK is required so this tests needs one.
-    let test_psk = SecretString::new("test_psk".into());
+    let test_psk = "test_psk";
+    let test_psk_server = SecretString::new(test_psk.into());
+    let test_psk_client = SecretString::new(test_psk.into());
 
     // Setup temporary config paths for certificates
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -36,25 +38,28 @@ async fn test_quic_end_to_end_minimal() {
     info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
-    let app_data = PRAppData::new(test_psk);
+    let server_app_data = ServerAppData::new(test_psk_server);
     let test_port = 65500; // HACK statically chosen port
-    let server_config: server::ServerConfig<PRAppData> = server::ServerConfig::create_default_config(
-        config_dir.clone(),
-        "localhost".to_string(),
-        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-        None,
-        app_data,
-    );
+    let server_config: server::ServerConfig<ServerAppData> =
+        server::ServerConfig::create_default_config(
+            config_dir.clone(),
+            "localhost".to_string(),
+            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
+            None,
+            server_app_data,
+        );
     info!("Server config: {:?}", server_config);
 
-    let client_config: client::ClientConfig<PRAppData> = client::ClientConfig::create_default_config(
-        config_dir,
-        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
-        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-        Some("localhost".to_string()),
-        None,
-        app_data,
-    );
+    let client_app_data = ClientAppData::new(test_psk_client, "0.0.0.0:0".parse().unwrap());
+    let client_config: client::ClientConfig<ClientAppData> =
+        client::ClientConfig::create_default_config(
+            config_dir,
+            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
+            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
+            Some("localhost".to_string()),
+            None,
+            client_app_data,
+        );
     info!("Client config: {:?}", client_config);
 
     // Create a Notify instance to signal when a connection is established.

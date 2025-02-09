@@ -4,6 +4,7 @@
 
 use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
+use portredirect::app_data::ClientAppData;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
@@ -53,18 +54,6 @@ struct Args {
 /// Data structure to hold connection statistics.
 struct ConnectionStats {
     connection_count: usize,
-}
-
-struct AppConfig {
-    destination: SocketAddr,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        AppConfig {
-            destination: "0.0.0.0:0".parse().unwrap(),
-        }
-    }
 }
 
 #[tokio::main]
@@ -135,13 +124,12 @@ async fn main() -> Result<()> {
 
     info!("QUIC connecting to {}", quic_remote_addr.clone());
 
-    let app_config = AppConfig {
-        destination: destination_addr
-            .to_socket_addrs()
-            .context("resolving destination address")?
-            .next()
-            .context("resolving destination address")?,
-    };
+    let forward_destination = destination_addr
+        .to_socket_addrs()
+        .context("resolving destination address")?
+        .next()
+        .context("resolving destination address")?;
+    let app_config = ClientAppData::new(args.quic_psk, forward_destination);
 
     let quic_client_config = ClientConfig::create_default_config(
         config_dir,
@@ -163,7 +151,7 @@ async fn main() -> Result<()> {
 // Handles our custom authentication stream.
 #[instrument[skip(config, connection)]]
 async fn handle_quic_auth(
-    config: Arc<ClientConfig<AppConfig>>,
+    config: Arc<ClientConfig<ClientAppData>>,
     connection: quinn::Connection,
 ) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     // Accept the first QUIC stream, which is for authenticating us to the server.
@@ -203,7 +191,7 @@ async fn handle_quic_auth(
         // Compute the SHA-256 hash and hex-encode it
         let mut hasher = Sha256::new();
         hasher.update(second_line);
-        hasher.update(config.pr_psk.expose_secret());
+        hasher.update(config.app_data.connection_auth_psk.expose_secret());
         let response_hex = hex::encode(hasher.finalize());
         debug!("Responding with SHA-256 hex: {}", response_hex);
 
@@ -249,7 +237,7 @@ async fn handle_quic_auth(
 // Called directly by run_quic_client.
 #[instrument[skip(config, conn)]]
 async fn handle_quic_to_tcp(
-    config: Arc<ClientConfig<AppConfig>>,
+    config: Arc<ClientConfig<ClientAppData>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     // First, ensure the client is authenticated.
@@ -313,12 +301,12 @@ async fn handle_quic_to_tcp(
 // TODO consolidate with server/main.rs
 #[instrument[skip(config, quic_send, quic_recv)]]
 async fn handle_quic_stream(
-    config: Arc<ClientConfig<AppConfig>>,
+    config: Arc<ClientConfig<ClientAppData>>,
     mut quic_send: quinn::SendStream,
     mut quic_recv: quinn::RecvStream,
 ) -> Result<(), Error> {
     let tcp_stream =  // Create TCP connection to remote destination
-        tokio::net::TcpStream::connect(&config.app_data.destination)
+        tokio::net::TcpStream::connect(&config.app_data.forward_destination)
             .await
             .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 

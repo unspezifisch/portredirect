@@ -1,6 +1,8 @@
 // Multiple Clients End-to-End Test for the PortRedirect/QUIC Client-Server Setup
 
+use portredirect::app_data::{ClientAppData, ServerAppData};
 use portredirect::quic::{client, server};
+use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -34,14 +36,21 @@ async fn test_quic_end_to_end_multiple_clients() {
     // Define the test server port
     let test_port = 65501; // HACK statically chosen port
 
+    // PSK is required so this tests needs one.
+    let test_psk = "test_psk";
+    let test_psk_server = SecretString::new(test_psk.into());
+    let test_psk_client = SecretString::new(test_psk.into());
+
     // Create the server configuration.
-    let server_config: server::ServerConfig<()> = server::ServerConfig::create_default_config(
-        config_dir.clone(),
-        "localhost".to_string(),
-        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-        Some(10),
-        None,
-    );
+    let server_app_data = ServerAppData::new(test_psk_server);
+    let server_config: server::ServerConfig<ServerAppData> =
+        server::ServerConfig::create_default_config(
+            config_dir.clone(),
+            "localhost".to_string(),
+            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
+            Some(10),
+            server_app_data,
+        );
     info!("Server config: {:?}", server_config);
 
     // Create shared state for connection counting.
@@ -76,16 +85,20 @@ async fn test_quic_end_to_end_multiple_clients() {
     // Spawn multiple client tasks.
     let num_clients = 5;
     let mut client_handles = Vec::with_capacity(num_clients);
+    let client_app_data = ClientAppData::new(test_psk_client, "0.0.0.0:0".parse().unwrap());
+
     for i in 0..num_clients {
         // Each client gets its own configuration. (Note that we clone the config directory.)
-        let client_config: client::ClientConfig<()> = client::ClientConfig::create_default_config(
-            config_dir.clone(),
-            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
-            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-            Some("localhost".to_string()),
-            Some(10),
-            None,
-        );
+        let app_data = client_app_data.clone();
+        let client_config: client::ClientConfig<ClientAppData> =
+            client::ClientConfig::create_default_config(
+                config_dir.clone(),
+                SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
+                SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
+                Some("localhost".to_string()),
+                Some(10),
+                app_data,
+            );
         info!("Client {} config: {:?}", i, client_config);
 
         let handle = tokio::spawn(async move {

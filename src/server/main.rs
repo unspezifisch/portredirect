@@ -4,6 +4,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
+use portredirect::app_data::ServerAppData;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::{get_config_dir, ByteCount, PortRedirectProtocol};
 use rand::rngs::OsRng;
@@ -18,7 +19,6 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, warn, Level};
-use portredirect::PRAppData;
 
 #[derive(Debug)]
 struct WorkerBundle {
@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
     let quic_psk = args
         .quic_psk
         .expect("PSK is required for QUIC PR operation");
-    let app_config = Arc::new(PRAppData::new(quic_psk));
+    let app_config = Arc::new(ServerAppData::new(quic_psk));
 
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -176,7 +176,7 @@ async fn main() -> Result<()> {
         let stats_clone = Arc::clone(&stats);
 
         let quinn_conn = {
-            let quinn_conn = app_config.quinn_connection.lock().unwrap();
+            let quinn_conn = app_config.connection.lock().unwrap();
             quinn_conn.clone()
         };
         let quinn_conn = match quinn_conn {
@@ -347,7 +347,7 @@ async fn handle_tcp_to_quic_stream(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_auth(
-    config: Arc<ServerConfig<Arc<PRAppData>>>,
+    config: Arc<ServerConfig<Arc<ServerAppData>>>,
     conn: quinn::Connection,
 ) -> Result<(quinn::SendStream, quinn::RecvStream)> {
     debug!("Authenticating PR QUIC client");
@@ -459,7 +459,7 @@ async fn handle_quic_client_auth(
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<Arc<PRAppData>>>,
+    config: Arc<ServerConfig<Arc<ServerAppData>>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
@@ -480,7 +480,7 @@ async fn handle_quic_client_connection(
 
     // TODO do the tasks still need this conn?
     {
-        let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
+        let mut quinn_conn = config.app_data.connection.lock().unwrap();
         *quinn_conn = Some(conn);
     }
 
@@ -524,7 +524,7 @@ async fn handle_quic_client_connection(
     }
 
     {
-        let mut quinn_conn = config.app_data.quinn_connection.lock().unwrap();
+        let mut quinn_conn = config.app_data.connection.lock().unwrap();
         *quinn_conn = None;
     }
 

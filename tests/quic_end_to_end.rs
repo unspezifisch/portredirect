@@ -31,14 +31,13 @@ async fn test_quic_connection() {
         None,
     );
 
-    // Create a Notify instance to signal when the server is ready.
+    // Create a Notify instance to signal when a connection is established.
     let notify = Arc::new(Notify::new());
     let notify_clone = Arc::clone(&notify);
 
-    // Start server in a separate task.
-    tokio::spawn(async move {
+    // Spawn the server task.
+    let server_handle = tokio::spawn(async move {
         let result = server::run_quic_server(server_config, move |_, _conn| {
-            // Clone notify into the callback.
             let notify_inner = Arc::clone(&notify_clone);
             async move {
                 info!("Server: New connection established");
@@ -47,19 +46,26 @@ async fn test_quic_connection() {
             }
         })
         .await;
-
         assert!(result.is_ok());
     });
 
-    // Wait for the notification that the server is ready.
+    // Spawn the client task concurrently.
+    let client_handle = tokio::spawn(async move {
+        let result = client::run_quic_client(client_config, |_, _conn| async move {
+            info!("Client: Connection established");
+            Ok(())
+        })
+        .await;
+        result
+    });
+
+    // Wait for the server to signal that a connection has been established.
     notify.notified().await;
 
-    // Run client and test connection.
-    let result = client::run_quic_client(client_config, |_, _conn| async move {
-        info!("Client: Connection established");
-        Ok(())
-    })
-    .await;
+    // Await the client result.
+    let client_result = client_handle.await.unwrap();
+    assert!(client_result.is_ok(), "Client failed to connect: {:#?}", client_result);
 
-    assert!(result.is_ok(), "Client failed to connect: {:#?}", result);
+    // Optionally, wait for the server task to finish.
+    server_handle.await.unwrap();
 }

@@ -82,7 +82,7 @@ impl<T: Default> ServerConfig<T> {
 ///
 /// # Arguments
 ///
-/// * `cert_alt_name` - The Subject Alternate Name (SAN) for the certificate.
+/// * `cert_alt_name` - The Subject Alternate Name (SAN) for the certificate (only used at key creation).
 /// * `key_path` - The path to the private key file to load, if it exists, or to save the generated key to if it does not.
 /// * `cert_path` - The path to the certificate file, same applies.
 ///

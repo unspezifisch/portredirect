@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
         args.quic_cert_hostname,
         quic_bind_addr,
         None,
-        Some(Arc::clone(&app_config)),
+        Arc::clone(&app_config),
     );
 
     // Spawn the QUIC server
@@ -228,51 +228,6 @@ async fn main() -> Result<()> {
             }
         });
     }
-}
-
-/// Handles a single connection by forwarding traffic between the local and remote sockets.
-///
-/// # Arguments
-/// * `local_socket` - The accepted local socket.
-/// * `remote_addr` - The address of the destination.
-async fn handle_tcp_to_tcp(local_socket: TcpStream, remote_addr: String) -> Result<()> {
-    let remote_socket = TcpStream::connect(remote_addr).await?;
-
-    // Split the sockets into read and write halves
-    let (mut local_read, mut local_write) = local_socket.into_split();
-    let (mut remote_read, mut remote_write) = remote_socket.into_split();
-
-    // Forward data from local to remote.
-    let local_to_remote_task: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buffer = [0u8; PortRedirectProtocol::TCP_DIRECT_FORWARDING_BUFFER_SIZE];
-        while let Ok(bytes_read) = local_read.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break;
-            }
-            remote_write.write_all(&buffer[..bytes_read]).await?;
-        }
-        Ok(())
-    });
-
-    // Forward data from remote to local.
-    let remote_to_local_task: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buffer = [0u8; PortRedirectProtocol::TCP_DIRECT_FORWARDING_BUFFER_SIZE];
-        while let Ok(bytes_read) = remote_read.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break;
-            }
-            local_write.write_all(&buffer[..bytes_read]).await?;
-        }
-        Ok(())
-    });
-
-    // Wait for both tasks to complete.
-    let result = tokio::try_join!(local_to_remote_task, remote_to_local_task);
-    if let Err(e) = result {
-        error!("Error in TCP forwarding: {:?}", e);
-    }
-
-    Ok(())
 }
 
 // Handles incoming TCP connections, forwards them to a QUIC stream.

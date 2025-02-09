@@ -137,7 +137,7 @@ async fn main() -> Result<()> {
         quic_remote_addr,
         args.quic_remote_hostname_match,
         None,
-        Some(app_config),
+        app_config,
     );
 
     // Spawn the QUIC client

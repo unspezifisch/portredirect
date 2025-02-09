@@ -11,7 +11,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
@@ -50,8 +50,8 @@ struct Args {
     quic_server_host: String,
 
     /// QUIC server listener port.
-    #[clap(long)]
-    quic_server_port: Option<u16>,
+    #[clap(long, default_value = "4433")]
+    quic_server_port: u16,
 
     /// QUIC server certificate Subject Alt Name.
     #[clap(long, default_value = "localhost")]
@@ -59,7 +59,7 @@ struct Args {
 
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
-    quic_psk: Option<SecretString>,
+    quic_psk: SecretString,
 }
 
 /// Data structure to hold connection statistics.
@@ -84,24 +84,12 @@ async fn main() -> Result<()> {
 
     // Parse args.
     let args = Args::parse();
-    let remote_addr = String::new();
-    let mut quic_bind_addr: SocketAddr = "127.0.0.1:4433".parse().expect("Failed to parse address");
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
-
-    match (args.quic_server_host, args.quic_server_port, &args.quic_psk) {
-        (quic_server_host, Some(quic_server_port), Some(_)) => {
-            // Parameters are complete.
-            quic_bind_addr = format!("{}:{}", quic_server_host, quic_server_port)
-                .to_socket_addrs()
-                .expect("Invalid host or port")
-                .next()
-                .expect("Unable to resolve address");
-        }
-        _ => {
-            error!("Error: --quic-server-port and --quic-psk must be specified in Quic mode.");
-            std::process::exit(1);
-        }
-    }
+    let quic_bind_addr = format!("{}:{}", args.quic_server_host, args.quic_server_port)
+        .to_socket_addrs()
+        .expect("Invalid host or port")
+        .next()
+        .expect("Unable to resolve address");
 
     // Shared state for connection statistics.
     let stats = Arc::new(Mutex::new(ConnectionStats {
@@ -136,9 +124,7 @@ async fn main() -> Result<()> {
     info!("TCP listening on {}", listener.local_addr()?);
 
     // Create QUIC server.
-    let quic_psk = args
-        .quic_psk
-        .expect("PSK is required for QUIC PR operation");
+    let quic_psk = args.quic_psk;
     let app_config = Arc::new(ServerAppData::new(quic_psk));
 
     rustls::crypto::ring::default_provider()

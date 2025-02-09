@@ -1,7 +1,6 @@
 // Multiple Clients End-to-End Test for the PortRedirect/QUIC Client-Server Setup
 
 use portredirect::quic::{client, server};
-use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -40,7 +39,7 @@ async fn test_quic_end_to_end_multiple_clients() {
         config_dir.clone(),
         "localhost".to_string(),
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-        SecretString::new("test_psk".into()),
+        Some(10),
         None,
     );
     info!("Server config: {:?}", server_config);
@@ -84,7 +83,7 @@ async fn test_quic_end_to_end_multiple_clients() {
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
             Some("localhost".to_string()),
-            SecretString::new("test_psk".into()),
+            Some(10),
             None,
         );
         info!("Client {} config: {:?}", i, client_config);

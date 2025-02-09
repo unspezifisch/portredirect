@@ -7,7 +7,6 @@
 use anyhow::{anyhow, Error, Result};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
-use secrecy::SecretString;
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument};
 
@@ -24,8 +23,6 @@ pub struct ClientConfig<T> {
     pub remote_socket: SocketAddr,
     pub connection_limit: Option<usize>,
 
-    pub pr_psk: SecretString,
-
     pub app_data: T,
 }
 
@@ -36,7 +33,7 @@ impl<T: Default> ClientConfig<T> {
         local_socket: SocketAddr,
         remote_socket: SocketAddr,
         remote_hostname_match: Option<String>,
-        psk: SecretString,
+        connection_limit: Option<usize>,
         app_data: Option<T>,
     ) -> Self {
         ClientConfig {
@@ -45,8 +42,7 @@ impl<T: Default> ClientConfig<T> {
             cert_file: config_dir.join("cert.der"),
             local_socket,
             remote_socket,
-            connection_limit: None,
-            pr_psk: psk,
+            connection_limit,
             app_data: app_data.unwrap_or_default(),
         }
     }

@@ -189,7 +189,7 @@ async fn main() -> Result<()> {
             config_dir,
             args.quic_cert_hostname,
             quic_bind_addr,
-            quic_psk,
+            None,
             Some(Arc::clone(&app_config)),
         );
 

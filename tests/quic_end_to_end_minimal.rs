@@ -37,7 +37,7 @@ async fn test_quic_end_to_end_minimal() {
         config_dir.clone(),
         "localhost".to_string(),
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
-        SecretString::new("test_psk".into()),
+        None,
         None,
     );
     info!("Server config: {:?}", server_config);
@@ -47,7 +47,7 @@ async fn test_quic_end_to_end_minimal() {
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
         Some("localhost".to_string()),
-        SecretString::new("test_psk".into()),
+        None,
         None,
     );
     info!("Client config: {:?}", client_config);

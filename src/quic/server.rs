@@ -7,7 +7,6 @@
 use anyhow::{Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use secrecy::SecretString;
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -25,7 +24,6 @@ use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
 /// * `listen` - Bind address for the QUIC server.
 /// * `stateless_retry` - Whether to enable stateless retry.
 /// * `connection_limit` - Optional limit on the number of concurrently forwarded connections.
-/// * `pr_psk` - Pre-shared key to authenticate the client to the server.
 /// * `app_data` - Optionally, any application-specific data.
 #[derive(Debug)]
 pub struct ServerConfig<T> {
@@ -35,7 +33,6 @@ pub struct ServerConfig<T> {
     pub listen: SocketAddr,
     pub stateless_retry: bool,
     pub connection_limit: Option<usize>,
-    pub pr_psk: SecretString,
     pub app_data: T,
 }
 
@@ -49,7 +46,7 @@ impl<T: Default> ServerConfig<T> {
     /// * `config_dir` - The directory where the certificate and key files are located.
     /// * `cert_alt_name` - The Subject Alternae Name (SAN) for the QUIC server certificate.
     /// * `bind_socket` - Bind address for the QUIC server.
-    /// * `psk` - Pre-shared key to authenticate the client to the server.
+    /// * `connection_limit` - Optionally, the maximum number of concurrent connections to allow.
     /// * `app_data` - Optionally, any application-specific data.
     ///
     /// # Returns
@@ -59,7 +56,7 @@ impl<T: Default> ServerConfig<T> {
         config_dir: PathBuf,
         cert_alt_name: String,
         bind_socket: SocketAddr,
-        psk: SecretString,
+        connection_limit: Option<usize>,
         app_data: Option<T>,
     ) -> Self {
         ServerConfig {
@@ -67,9 +64,8 @@ impl<T: Default> ServerConfig<T> {
             cert_file: config_dir.join("cert.der"),
             key_file: config_dir.join("key.der"),
             listen: bind_socket,
-            stateless_retry: true,  // Be more secure by default
-            connection_limit: None, // TODO add fn parameter for this
-            pr_psk: psk,
+            stateless_retry: true, // Be more secure by default
+            connection_limit,
             app_data: app_data.unwrap_or_default(),
         }
     }
@@ -128,7 +124,7 @@ impl<T: Default> ServerConfig<T> {
 ///         "Private key file was not created at {:?}",
 ///         key_path
 ///     );
-/// 
+///
 ///     Ok(())
 /// }
 /// ```
@@ -164,7 +160,7 @@ pub fn load_or_generate_quic_cert(
 ///
 /// Returns a `Result` containing a tuple with the certificate chain and private key,
 /// in a format suitable for quinn.
-/// 
+///
 /// # Examples
 ///
 /// ```rust
@@ -221,7 +217,7 @@ pub fn load_quic_cert(
 /// name for the certificate (e.g., a domain name or IP address). The generated files are saved
 /// to the specified paths. The function then loads the certificate and private key into
 /// QUIC-compatible formats.
-/// 
+///
 /// Note: This function is suitable for development and testing purposes. For production,
 /// use a trusted certificate authority to issue certificates.
 ///
@@ -320,7 +316,7 @@ pub fn generate_quic_cert(
 /// This function sets up and runs a QUIC server using the provided configuration and
 /// client connection handler. It handles incoming connections and spawns tasks to
 /// process them.
-/// 
+///
 /// Prerequisite: A rustls CryptoProvider must be available before calling this function,
 /// call CryptoProvider::install_default() before this point.
 ///

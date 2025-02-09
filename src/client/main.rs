@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
         quic_local_addr,
         quic_remote_addr,
         args.quic_remote_hostname_match,
-        args.quic_psk,
+        None,
         Some(app_config),
     );
 

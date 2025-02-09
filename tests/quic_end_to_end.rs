@@ -10,6 +10,9 @@ use tokio::sync::Notify;
 use tokio::time::{timeout, Duration};
 use tracing::info;
 
+// This is an end-to-end test that sets up a QUIC server and client, and tests that they can
+// successfully establish a connection. The server and client are run in separate tasks, and the
+// test waits for the server and client to signal that a connection has been established.
 #[tokio::test]
 async fn test_quic_connection() {
     // Initialize the tracing subscriber for logging
@@ -25,6 +28,7 @@ async fn test_quic_connection() {
 
     // Setup temporary config paths for certificates
     let config_dir = PathBuf::from(std::env::temp_dir());
+    info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
     let server_config: server::ServerConfig<()> = server::ServerConfig::create_default_config(
@@ -34,6 +38,7 @@ async fn test_quic_connection() {
         SecretString::new("test_psk".into()),
         None,
     );
+    info!("Server config: {:?}", server_config);
 
     let client_config: client::ClientConfig<()> = client::ClientConfig::create_default_config(
         config_dir,
@@ -43,12 +48,15 @@ async fn test_quic_connection() {
         SecretString::new("test_psk".into()),
         None,
     );
+    info!("Client config: {:?}", client_config);
 
     // Create a Notify instance to signal when a connection is established.
     let notify = Arc::new(Notify::new());
     let notify_clone = Arc::clone(&notify);
 
+    info!("Starting server task");
     let server_handle = tokio::spawn(async move {
+        info!("Server: Starting server");
         match server::run_quic_server(server_config, move |_, _conn| {
             let notify_inner = Arc::clone(&notify_clone);
             async move {
@@ -64,7 +72,9 @@ async fn test_quic_connection() {
         }
     });
 
+    info!("Starting client task");
     let client_handle: tokio::task::JoinHandle<Result<(), Error>> = tokio::spawn(async move {
+        info!("Client: Starting client");
         match client::run_quic_client(client_config, |_, _conn| async move {
             info!("Client: Connection established");
             Ok(())
@@ -76,20 +86,28 @@ async fn test_quic_connection() {
         }
     });
 
+    info!("Waiting for server and client to signal connection (5s timeout)");
     let notify_result = timeout(Duration::from_secs(5), notify.notified()).await;
     assert!(
         notify_result.is_ok(),
         "Server did not signal within timeout"
     );
+    info!("Server and client signaled connection!");
 
-    // Await the client result.
-    let client_result = client_handle.await.unwrap();
+    // Await the client result with a timeout.
+    info!("Waiting for client to finish (5s timeout)");
+    let client_result = timeout(Duration::from_secs(5), client_handle).await;
     assert!(
-        client_result.is_ok(),
-        "Client failed to connect: {:#?}",
-        client_result
+        client_result.is_ok() && client_result.unwrap().is_ok(),
+        "Client failed to connect within timeout"
     );
 
-    // Optionally, wait for the server task to finish.
-    server_handle.await.unwrap();
+    // Await the server result with a timeout.
+    info!("Waiting for server to finish (5s timeout)");
+    let server_result = timeout(Duration::from_secs(5), server_handle).await;
+    assert!(
+        server_result.is_ok(),
+        "Server did not finish within timeout"
+    );
+    server_result.unwrap().unwrap();
 }

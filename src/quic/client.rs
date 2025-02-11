@@ -51,9 +51,12 @@ impl<AppDataType> ClientConfig<AppDataType> {
 /// Prerequisite: A rustls CryptoProvider must be available before calling this function,
 /// call CryptoProvider::install_default() before this point.
 #[instrument(skip(config, handle_incoming))]
-pub async fn run_quic_client<F, Fut, T>(config: ClientConfig<T>, handle_incoming: F) -> Result<(), Error>
+pub async fn run_quic_client<F, Fut, AppDataType>(
+    config: ClientConfig<AppDataType>,
+    handle_incoming: F,
+) -> Result<(), Error>
 where
-    F: Fn(Arc<ClientConfig<T>>, quinn::Connection) -> Fut + Send + Sync + 'static,
+    F: Fn(Arc<ClientConfig<AppDataType>>, quinn::Connection) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<(), Error>> + Send + 'static,
 {
     info!("Starting PR QUIC client setup");

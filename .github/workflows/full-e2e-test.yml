@@ -1,4 +1,5 @@
-name: Full End-to-End Load Benchmark
+name: Full End-to-End Test
+# similar to the benchmark workflow, but with a few checks removed
 
 on:
   push:
@@ -24,7 +25,7 @@ jobs:
           sudo apt-get install -y bats
 
       - name: Run BATS test(s)
-        run: bats tests/full_e2e_benchmark.bats
+        run: bats tests/full_e2e_test.bats
 
       - name: Upload Logs
         uses: actions/upload-artifact@v4

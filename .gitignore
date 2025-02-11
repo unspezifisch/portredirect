@@ -1,1 +1,4 @@
 /target
+client.log
+iperf_server.log
+server.log

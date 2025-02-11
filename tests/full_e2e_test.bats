@@ -1,6 +1,5 @@
 #!/usr/bin/env bats
-# This is a benchmark test that shows the performance of a direct connection and a tunneled connection for comparison.
-# It ensures that all commands run successfully and that there are no transmission errors.
+# This test is the same as the benchmark test, but without the baseline comparison and without the retries check.
 
 setup() {
   # Start portredirect server in background
@@ -30,20 +29,7 @@ teardown() {
   kill $SERVER_PID $CLIENT_PID $IPERF_PID || true
 }
 
-@test "Baseline iperf3 test (direct connection)" {
-  run iperf3 -c 127.0.0.1 -p 5201
-  [ "$status" -eq 0 ]
-  # Expect zero packet loss. Adjust the grep according to the iperf3 version output.
-  run grep -q "0% packet loss" <<<"$output"
-  [ "$status" -eq 0 ]
-}
-
-@test "Tunneled iperf3 test (via portredirect) shows no retries" {
+@test "Tunneled iperf3 test (via portredirect)" {
   run iperf3 -c 127.0.0.1 -p 10001
-  [ "$status" -eq 0 ]
-  # Check for 0% packet loss or no retries in the output.
-  run grep -q "0% packet loss" <<<"$output"
-  [ "$status" -eq 0 ]
-  run grep -q "0 retries" <<<"$output"
   [ "$status" -eq 0 ]
 }

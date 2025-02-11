@@ -1,9 +1,17 @@
 name: Full End-to-End Test
-# similar to the benchmark workflow, but with a few checks removed
+# Similar to the benchmark workflow, but with a few checks removed.
+# Also added a debug tmate hook.
 
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
 
 jobs:
   load-test:
@@ -23,6 +31,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y iperf3
           sudo apt-get install -y bats
+
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+          limit-access-to-actor: true
 
       - name: Run BATS test(s)
         run: bats tests/full_e2e_test.bats

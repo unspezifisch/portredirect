@@ -8,6 +8,8 @@ PortRedirect-RS is split into *server* and *client* side.
 
 **Client:** Redirects incoming server-initiated QUIC streams to a *destination* TCP host and port (e.g. `localhost:443`). Acts as a QUIC client to the QUIC server, i.e. initiates the QUIC connection.
 
+[![codecov](https://codecov.io/gh/unspezifisch/portredirect-rs/graph/badge.svg?token=TJSQNU6NMR)](https://codecov.io/gh/unspezifisch/portredirect-rs)
+
 ## Testing the server
 
 ```sh

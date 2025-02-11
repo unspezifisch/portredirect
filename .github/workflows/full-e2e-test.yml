@@ -29,8 +29,8 @@ jobs:
       - name: Install iperf3 and bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y iperf3
           sudo apt-get install -y bats
+          sudo apt-get install -y iperf3
 
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
@@ -40,17 +40,12 @@ jobs:
           limit-access-to-actor: true
 
       - name: Run BATS test(s)
-        run: bats tests/full_e2e_test.bats
+        run: bats --gather-test-outputs-in ./bats-logs tests/full_e2e_test.bats
 
       - name: Show Log Files
         if: always()
         run: |
-          echo "========== server.log =========="
-          cat server.log || true
-          echo "========== client.log =========="
-          cat client.log || true
-          echo "========== iperf_server.log =========="
-          cat iperf_server.log || true
+          cat ./bats-logs/* || true
 
       - name: Upload Logs
         uses: actions/upload-artifact@v4
@@ -58,7 +53,5 @@ jobs:
         with:
           name: portredirect-e2e-test-logs
           path: |
-            server.log
-            client.log
-            iperf_server.log
+            ./bats-logs/*
 

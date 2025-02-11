@@ -284,8 +284,8 @@ async fn handle_tcp_to_quic_stream(
     Ok(())
 }
 
-// Handles one PR QUIC client connection.
-// Called by run_quic_server.
+// Authenticates the PR QUIC client to us, the server.
+// Called by handle_quic_client_connection.
 #[instrument(skip(config, conn))]
 async fn handle_quic_client_auth(
     config: Arc<ServerConfig<Arc<ServerAppData>>>,

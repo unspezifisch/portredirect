@@ -26,8 +26,8 @@ jobs:
       - name: Run BATS test(s)
         run: bats tests/full_e2e_benchmark.bats
 
-      - name: Show Log Files on Failure
-        if: failure()
+      - name: Show Log Files
+        if: always()
         run: |
           echo "========== server.log =========="
           cat server.log || true
@@ -38,6 +38,7 @@ jobs:
 
       - name: Upload Logs
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portredirect-e2e-benchmark-logs
           path: |

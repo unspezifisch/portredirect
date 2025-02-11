@@ -1,19 +1,48 @@
 #!/usr/bin/env bats
 # This is a benchmark test that shows the performance of a direct connection and a tunneled connection for comparison.
 # It ensures that all commands run successfully and that there are no transmission errors.
+#
+# Here are diagrams of the two connection setups:
+#          Baseline Test
+#  ------------------------------------------------------
+# |                                                      |
+# |   iperf3 Client              iperf3 Server           |
+# |   (connect to port 5201)  -->  (listening on 5201)   |
+# |                                                      |
+#  ------------------------------------------------------
+#          Tunneled Test
+#  --------------------------------------------------------------
+# |                                                              |
+# |   iperf3 Client                                              |
+# |   (connects to port 10001)                                   |
+# |          |                                                   |
+# |          v                                                   |
+# |   portredirect_server                                        |
+# |   (127.0.0.1:10001)                                          |
+# |          |                                                   |
+# |          |  Establishes a QUIC tunnel using port 4433        |
+# |          v                                                   |
+# |   portredirect_client                                        |
+# |   (connects via QUIC to server on port 4433)                 |
+# |          |                                                   |
+# |          v                                                   |
+# |   iperf3 Server                                              |
+# |   (listening on port 5201)                                   |
+# |                                                              |
+#  --------------------------------------------------------------
 
 setup() {
   cargo build
 
   # Start portredirect server in background
-  RUST_BACKTRACE=1 RUST_LOG=tracing=debug cargo run --bin portredirect_server -- \
+  RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server -- \
     --local-host 127.0.0.1 --local-port 10001 \
     --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
     >server.log 2>&1 &
   SERVER_PID=$!
 
   # Start portredirect client in background
-  RUST_BACKTRACE=1 RUST_LOG=tracing=debug cargo run --bin portredirect_client -- \
+  RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_client -- \
     --destination-host 127.0.0.1 --destination-port 5201 \
     --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
     --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
@@ -40,8 +69,17 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "Tunneled iperf3 test (via portredirect) shows no retries" {
-  run iperf3 -c 127.0.0.1 -p 10001
+@test "Tunneled iperf3 test (via portredirect)" {
+  run iperf3 -c 127.0.0.1 -p 10001 -L 10G
+  [ "$status" -eq 0 ]
+  run iperf3 -c 127.0.0.1 -p 10001 -R -L 10G
+  [ "$status" -eq 0 ]
+
+  run grep -q
+}
+
+@test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
+  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -L 1G
   [ "$status" -eq 0 ]
   # Check for 0% packet loss or no retries in the output.
   run grep -q "0% packet loss" <<<"$output"

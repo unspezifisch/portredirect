@@ -27,7 +27,7 @@ jobs:
         run: bats tests/full_e2e_benchmark.bats
 
       - name: Upload Logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-logs
           path: |

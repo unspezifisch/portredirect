@@ -26,6 +26,16 @@ jobs:
       - name: Run BATS test(s)
         run: bats tests/full_e2e_benchmark.bats
 
+      - name: Show Log Files on Failure
+        if: failure()
+        run: |
+          echo "========== server.log =========="
+          cat server.log || true
+          echo "========== client.log =========="
+          cat client.log || true
+          echo "========== iperf_server.log =========="
+          cat iperf_server.log || true
+
       - name: Upload Logs
         uses: actions/upload-artifact@v4
         with:
@@ -34,4 +44,3 @@ jobs:
             server.log
             client.log
             iperf_server.log
-

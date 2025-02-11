@@ -2,8 +2,10 @@
 # This test is the same as the benchmark test, but without the baseline comparison and without the retries check.
 
 setup() {
+  cargo build
+
   # Start portredirect server in background
-  RUST_LOG=tracing=debug cargo run --bin portredirect_server -- \
+  RUST_BACKTRACE=1 RUST_LOG=tracing=debug cargo run --bin portredirect_server -- \
     --local-host 127.0.0.1 --local-port 10001 \
     --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
     >server.log 2>&1 &

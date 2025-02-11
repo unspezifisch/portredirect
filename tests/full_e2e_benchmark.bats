@@ -3,8 +3,10 @@
 # It ensures that all commands run successfully and that there are no transmission errors.
 
 setup() {
+  cargo build
+
   # Start portredirect server in background
-  RUST_LOG=tracing=debug cargo run --bin portredirect_server -- \
+  RUST_BACKTRACE=1 RUST_LOG=tracing=debug cargo run --bin portredirect_server -- \
     --local-host 127.0.0.1 --local-port 10001 \
     --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
     >server.log 2>&1 &

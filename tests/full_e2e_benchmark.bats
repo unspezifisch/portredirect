@@ -41,6 +41,9 @@ setup() {
     >server.log 2>&1 &
   SERVER_PID=$!
 
+  # Wait a short time for the server to be ready
+  sleep 1
+
   # Start portredirect client in background
   RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_client \
     --destination-host 127.0.0.1 --destination-port 5201 \

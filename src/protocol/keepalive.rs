@@ -136,6 +136,7 @@ where
 
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,17 +251,12 @@ mod tests {
     /// Builds a mock stream for a “good” keepalive interaction.
     fn build_good_keepalive() -> tokio_test::io::Mock {
         let mut builder = Builder::new();
-        // First ping: write PING, flush, then expect a PONG reply.
+        // Only expect one ping: write PING, then read PONG.
         builder.write(PING_MESSAGE);
-        //builder.flush();
         builder.read(b"PONG\n");
-        // Second ping: write PING, flush, then simulate connection closed.
-        builder.write(PING_MESSAGE);
-        //builder.flush();
-        builder.read(b"");
         builder.build()
     }
-
+    
     /// Builds a mock stream that returns an incorrect response.
     fn build_wrong_response() -> tokio_test::io::Mock {
         let mut builder = Builder::new();

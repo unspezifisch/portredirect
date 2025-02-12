@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# This test is the same as the benchmark test, but without the baseline comparison and without the retries check.
+# This test checks that portredirect runs and doesn't blatantly crash or exits with an error.
 
 setup() {
   cargo build

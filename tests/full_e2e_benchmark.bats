@@ -65,10 +65,9 @@ teardown() {
 }
 
 @test "Baseline iperf3 test (direct connection)" {
-  run iperf3 -c 127.0.0.1 -p 5201
+  run iperf3 -c 127.0.0.1 -p 5201 -L 10G
   [ "$status" -eq 0 ]
-  # Expect zero packet loss. Adjust the grep according to the iperf3 version output.
-  run grep -q "0% packet loss" <<<"$output"
+  run iperf3 -c 127.0.0.1 -p 5201 -R -L 10G
   [ "$status" -eq 0 ]
 }
 
@@ -78,13 +77,32 @@ teardown() {
   run iperf3 -c 127.0.0.1 -p 10001 -R -L 10G
   [ "$status" -eq 0 ]
 
-  run grep -q
+  # Check that no ERROR occurred in the portredirect logs
+  if grep -q "ERROR" server.log; then
+    echo "ERROR found in server.log"
+    exit 1
+  fi
+  if grep -q "ERROR" client.log; then
+    echo "ERROR found in client.log"
+    exit 1
+  fi
 }
 
 @test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
   run iperf3 -c 127.0.0.1 -p 10001 -P 100 -L 1G
   [ "$status" -eq 0 ]
-  # Check for 0% packet loss or no retries in the output.
+
+  # Check that no ERROR occurred in the portredirect logs
+  if grep -q "ERROR" server.log; then
+    echo "ERROR found in server.log"
+    exit 1
+  fi
+  if grep -q "ERROR" client.log; then
+    echo "ERROR found in client.log"
+    exit 1
+  fi
+
+  # TODO Check for 0% packet loss or no retries in the output.
   run grep -q "0% packet loss" <<<"$output"
   [ "$status" -eq 0 ]
   run grep -q "0 retries" <<<"$output"

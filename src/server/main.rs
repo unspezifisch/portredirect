@@ -14,8 +14,9 @@ use secrecy::SecretString;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::io::{self};
+use tokio::io;
 use tokio::net::TcpListener;
+use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info, span, Level};
 
 /// Command-line arguments for the port redirector tool.
@@ -54,60 +55,55 @@ struct Args {
     quic_psk: SecretString,
 }
 
-/// Data structure to hold connection statistics.
+/// Holds connection statistics.
 struct ConnectionStats {
     connection_count: usize,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize the tracing subscriber.
     tracing_subscriber::fmt()
         .with_max_level(Level::DEBUG)
         .with_target(true)
         .with_line_number(true)
         .init();
 
-    let root_span = span!(Level::INFO, "prserver_main");
-    let _enter = root_span.enter();
+    let _root_span = span!(Level::INFO, "prserver_main").entered();
 
-    // Get or create config directory.
+    // Get or create the configuration directory.
     let config_dir = get_config_dir()?;
     info!("Configuration directory: {:?}", config_dir);
 
-    // Parse args.
+    // Parse command-line arguments.
     let args = Args::parse();
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
     let quic_bind_addr = format!("{}:{}", args.quic_server_host, args.quic_server_port)
-        .to_socket_addrs()
-        .expect("Invalid host or port")
+        .to_socket_addrs()?
         .next()
-        .expect("Unable to resolve address");
+        .ok_or_else(|| anyhow!("Unable to resolve QUIC server address"))?;
 
     // Shared state for connection statistics.
-    let stats = Arc::new(Mutex::new(ConnectionStats {
-        connection_count: 0,
-    }));
+    let stats = Arc::new(Mutex::new(ConnectionStats { connection_count: 0 }));
 
-    // Spawn a task to periodically print stats.
-    let stats_clone = stats.clone();
+    // Spawn a task to periodically log connection stats.
+    let stats_clone = Arc::clone(&stats);
     tokio::spawn(async move {
-        use tokio::time::{sleep, Duration};
         let mut printed_once = false;
         let mut previous_connection_count = 0;
-
         loop {
             sleep(Duration::from_millis(100)).await;
-            let stats = stats_clone.lock().unwrap();
-            if previous_connection_count != stats.connection_count || !printed_once {
-                info!("Active connections: {}", stats.connection_count);
-                previous_connection_count = stats.connection_count;
+            let current_count = stats_clone.lock().unwrap().connection_count;
+            if current_count != previous_connection_count || !printed_once {
+                info!("Active connections: {}", current_count);
+                previous_connection_count = current_count;
                 printed_once = true;
             }
         }
     });
 
-    // Create local listener.
-    let listener = TcpListener::bind(local_addr.clone()).await.map_err(|e| {
+    // Create the TCP listener.
+    let listener = TcpListener::bind(&local_addr).await.map_err(|e| {
         io::Error::new(
             io::ErrorKind::Other,
             format!("Failed to bind to {}: {}", local_addr, e),
@@ -115,17 +111,14 @@ async fn main() -> Result<()> {
     })?;
     info!("TCP listening on {}", listener.local_addr()?);
 
-    // Create QUIC server.
-    let quic_psk = args.quic_psk;
-    let app_config = Arc::new(ServerAppData::new(quic_psk));
-
+    // Prepare the QUIC server configuration.
+    let app_config = Arc::new(ServerAppData::new(args.quic_psk));
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
+    info!("QUIC listening on {}", quic_bind_addr);
 
-    info!("QUIC listening on {}", quic_bind_addr.clone());
-
-    let config = ServerConfig::create_default_config(
+    let quic_config = ServerConfig::create_default_config(
         config_dir,
         args.quic_cert_hostname,
         quic_bind_addr,
@@ -133,74 +126,74 @@ async fn main() -> Result<()> {
         Arc::clone(&app_config),
     );
 
-    // Spawn the QUIC server
-    tokio::spawn(async {
-        if let Err(e) = run_quic_server(config, handle_quic_client_connection).await {
-            error!(error = %e, "QUIC thread error");
+    // Spawn the QUIC server.
+    tokio::spawn(async move {
+        if let Err(e) = run_quic_server(quic_config, handle_quic_client_connection).await {
+            error!(error = %e, "QUIC server encountered an error");
         }
     });
 
-    // Handle incoming TCP connections forever.
+    // Handle incoming TCP connections indefinitely.
     loop {
         let (local_socket, _) = match listener.accept().await {
-            Ok(listener) => listener,
+            Ok(conn) => conn,
             Err(e) => {
-                error!("Failed to accept connection: {}", e);
+                error!("Failed to accept TCP connection: {}", e);
                 continue;
             }
         };
-        debug!("New TCP connection from: {:?}", local_socket.peer_addr());
+        debug!(
+            "New TCP connection from: {:?}",
+            local_socket.peer_addr().ok()
+        );
 
-        let stats_clone = Arc::clone(&stats);
-
-        let quinn_conn = {
-            let quinn_conn = app_config.connection.lock().unwrap();
-            quinn_conn.clone()
-        };
+        // Try to obtain a QUIC connection from the shared configuration.
+        let quinn_conn = { app_config.connection.lock().unwrap().clone() };
         let quinn_conn = match quinn_conn {
-            Some(quinn_conn) => quinn_conn,
+            Some(conn) => conn,
             None => {
-                error!("Can't accept new TCP connection because we have no QUIC connection");
-                // TODO do we need to close this connection?
+                error!("No QUIC connection available to handle TCP connection");
                 continue;
             }
         };
 
-        let (quic_send, quic_recv) = quinn_conn
-            .open_bi()
-            .await
-            .map_err(|e| anyhow!("failed to open QUIC stream: {}", e))?;
+        // Open a bidirectional QUIC stream.
+        let (quic_send, quic_recv) = match quinn_conn.open_bi().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to open QUIC stream: {}", e);
+                continue;
+            }
+        };
         let stream_id = quic_send.id();
         debug!(
-            "Opened bidi QUIC stream for TCP forwarding, stream id {}",
+            "Opened bidirectional QUIC stream (ID: {}) for TCP forwarding",
             stream_id
         );
 
-        let worker_bundle = QuinnWorkerBundle {
-            quic_recv,
-            quic_send,
-        };
+        let worker_bundle = QuinnWorkerBundle { quic_recv, quic_send };
+        let stats_clone = Arc::clone(&stats);
 
+        // Spawn a task to bridge data between the TCP connection and the QUIC stream.
         tokio::spawn(async move {
-            // Increment connection count.
             {
+                // Increment connection count.
                 let mut stats = stats_clone.lock().unwrap();
                 stats.connection_count += 1;
             }
 
-            // Bridge data through QUIC connection to PR client, who bridges it to an outgoing TCP connection.
             let start = Instant::now();
             if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
-                error!("Error handling QUIC/TCP stream: {:?}", e);
+                error!("Error in QUIC/TCP stream handling: {:?}", e);
             }
             debug!(
-                "QUIC/TCP stream terminated after {:?}, stream id {}",
-                start.elapsed(),
-                stream_id
+                "Closed QUIC/TCP stream (ID: {}) after {:?}",
+                stream_id,
+                start.elapsed()
             );
 
-            // Decrement connection count.
             {
+                // Decrement connection count.
                 let mut stats = stats_clone.lock().unwrap();
                 stats.connection_count -= 1;
             }

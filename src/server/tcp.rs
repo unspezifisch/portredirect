@@ -1,81 +1,100 @@
-// PortRedirector-RS Server - Incoming TCP connection handler
-//
-// License: GPL-3.0-only
-
 use crate::{ByteCount, PortRedirectProtocol};
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;
 use tracing::{debug, info};
 
 use super::utils::QuinnWorkerBundle;
 
-// Handles incoming TCP connections, forwards them to a QUIC stream.
-// TODO consolidate with client/main.rs
-#[allow(unused)]
+/// Handles an incoming TCP connection and forwards it to a QUIC stream.
 pub async fn handle_tcp_to_quic_stream(
-    mut tcp_stream: tokio::net::TcpStream,
+    tcp_stream: tokio::net::TcpStream,
     mut bundle: QuinnWorkerBundle,
 ) -> Result<()> {
     let stream_id = bundle.quic_send.id();
-    let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
+    let (mut tcp_reader, mut tcp_writer) = tcp_stream.into_split();
 
-    // Forward TCP -> QUIC
+    // Task to forward data from TCP to QUIC.
     let tcp_to_quic: JoinHandle<Result<ByteCount>> = tokio::spawn(async move {
-        let mut byte_count = 0 as ByteCount;
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
+        let mut total_bytes: ByteCount = 0;
+        let mut buf = [0u8; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
+        loop {
+            let n = tcp_reader
+                .read(&mut buf)
+                .await
+                .context("Error reading from TCP stream")?;
+            if n == 0 {
+                break; // End of stream.
             }
-            byte_count += bytes_read as ByteCount;
-            bundle.quic_send.write_all(&buf[..bytes_read]).await?;
+            total_bytes += n as ByteCount;
+            bundle
+                .quic_send
+                .write_all(&buf[..n])
+                .await
+                .context("Error writing to QUIC stream")?;
         }
-        bundle.quic_send.finish()?; // Signal end of stream
-        _ = bundle.quic_send.stopped().await; // Wait for the stream to be closed
-        Ok(byte_count)
+        // Signal end of stream and wait for a proper shutdown.
+        bundle
+            .quic_send
+            .finish()
+            .context("Error finishing QUIC send stream")?;
+        if let Err(e) = bundle.quic_send.stopped().await {
+            tracing::warn!("QUIC stream stopped with error: {:?}", e);
+        }
+        Ok(total_bytes)
     });
 
-    // Forward QUIC -> TCP
+    // Task to forward data from QUIC to TCP.
     let quic_to_tcp: JoinHandle<Result<ByteCount>> = tokio::spawn(async move {
-        let mut byte_count = 0 as ByteCount;
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(Some(bytes_read)) = bundle.quic_recv.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
+        let mut total_bytes: ByteCount = 0;
+        let mut buf = [0u8; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
+        loop {
+            // The QUIC read returns an Option: `None` or `Some(bytes_read)`.
+            let bytes_opt = bundle
+                .quic_recv
+                .read(&mut buf)
+                .await
+                .context("Error reading from QUIC stream")?;
+            match bytes_opt {
+                Some(0) | None => break, // End of stream.
+                Some(n) => {
+                    total_bytes += n as ByteCount;
+                    tcp_writer
+                        .write_all(&buf[..n])
+                        .await
+                        .context("Error writing to TCP stream")?;
+                }
             }
-            byte_count += bytes_read as ByteCount;
-            tcp_write_half.write_all(&buf[..bytes_read]).await?;
         }
-        tcp_write_half.shutdown().await?;
-        Ok(byte_count)
+        tcp_writer
+            .shutdown()
+            .await
+            .context("Error shutting down TCP writer")?;
+        Ok(total_bytes)
     });
 
     // Wait for both directions to complete.
-    let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
-    match result {
-        Ok((Ok(quic_tx_bytes), Ok(quic_rx_bytes))) => {
+    let (tcp_to_quic_result, quic_to_tcp_result) =
+        tokio::try_join!(tcp_to_quic, quic_to_tcp)
+            .context("One of the forwarding tasks failed")?;
+
+    // Now check the results.
+    match (tcp_to_quic_result, quic_to_tcp_result) {
+        (Ok(n1), Ok(n2)) => {
             info!(
-                "TCP to QUIC byte count: {:?}, QUIC to TCP byte count: {:?}, stream id {}",
-                quic_tx_bytes, quic_rx_bytes, stream_id
+                "TCP→QUIC forwarded {} bytes, QUIC→TCP forwarded {} bytes (stream id {})",
+                n1, n2, stream_id
             );
         }
-        Ok((Err(e), _)) | Ok((_, Err(e))) => {
-            return Err(anyhow!(
-                "Error in one side of QUIC tunnel for TCP forwarding: {:?}, stream id {}",
-                e,
-                stream_id
-            ));
-        }
-        Err(e) => {
-            return Err(anyhow!(
-                "Join error in TCP forwarding: {:?}, stream id {}",
-                e,
-                stream_id
+        (Err(e), _) | (_, Err(e)) => {
+            return Err(anyhow::anyhow!(
+                "Error in one side of the QUIC tunnel for TCP forwarding (stream id {}): {:?}",
+                stream_id,
+                e
             ));
         }
     }
 
-    debug!("Closed QUIC stream for TCP connection");
+    debug!("Closed QUIC stream for TCP connection (stream id {})", stream_id);
     Ok(())
 }

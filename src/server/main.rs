@@ -2,7 +2,7 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use portredirect::app_data::ServerAppData;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
@@ -11,22 +11,22 @@ use portredirect::server::tcp::handle_tcp_to_quic_stream;
 use portredirect::server::utils::QuinnWorkerBundle;
 use portredirect::get_config_dir;
 use secrecy::SecretString;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex};
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
-use tokio::io;
 use tokio::net::TcpListener;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info, span, Level};
 
 /// Command-line arguments for the port redirector tool.
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 struct Args {
-    /// Local host to bind the listener.
+    /// Local host to bind the TCP listener.
     #[clap(long)]
     local_host: String,
 
-    /// Local port to bind the listener.
+    /// Local port to bind the TCP listener.
     #[clap(long)]
     local_port: u16,
 
@@ -55,148 +55,155 @@ struct Args {
     quic_psk: SecretString,
 }
 
-/// Holds connection statistics.
-struct ConnectionStats {
-    connection_count: usize,
-}
-
+/// Program entry point.
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize the tracing subscriber.
-    tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
-        .with_target(true)
-        .with_line_number(true)
-        .init();
+    setup_tracing();
 
+    // Create a root span for logging.
     let _root_span = span!(Level::INFO, "prserver_main").entered();
 
-    // Get or create the configuration directory.
-    let config_dir = get_config_dir()?;
+    // Retrieve (or create) the configuration directory.
+    let config_dir = get_config_dir().context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
 
     // Parse command-line arguments.
     let args = Args::parse();
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
-    let quic_bind_addr = format!("{}:{}", args.quic_server_host, args.quic_server_port)
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| anyhow!("Unable to resolve QUIC server address"))?;
+    let quic_addr = resolve_socket_addr(&format!(
+        "{}:{}",
+        args.quic_server_host, args.quic_server_port
+    ))
+    .context("Failed to resolve QUIC bind address")?;
 
-    // Shared state for connection statistics.
-    let stats = Arc::new(Mutex::new(ConnectionStats { connection_count: 0 }));
-
-    // Spawn a task to periodically log connection stats.
-    let stats_clone = Arc::clone(&stats);
-    tokio::spawn(async move {
-        let mut printed_once = false;
-        let mut previous_connection_count = 0;
-        loop {
-            sleep(Duration::from_millis(100)).await;
-            let current_count = stats_clone.lock().unwrap().connection_count;
-            if current_count != previous_connection_count || !printed_once {
-                info!("Active connections: {}", current_count);
-                previous_connection_count = current_count;
-                printed_once = true;
-            }
-        }
-    });
+    // Use an atomic counter for connection statistics.
+    let active_connections = Arc::new(AtomicUsize::new(0));
+    tokio::spawn(report_active_connections(active_connections.clone()));
 
     // Create the TCP listener.
-    let listener = TcpListener::bind(&local_addr).await.map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to bind to {}: {}", local_addr, e),
-        )
-    })?;
+    let listener = TcpListener::bind(&local_addr)
+        .await
+        .with_context(|| format!("Failed to bind TCP listener to {}", local_addr))?;
     info!("TCP listening on {}", listener.local_addr()?);
 
-    // Prepare the QUIC server configuration.
-    let app_config = Arc::new(ServerAppData::new(args.quic_psk));
+    // Set up QUIC server configuration.
+    let app_data = Arc::new(ServerAppData::new(args.quic_psk));
+    // Install the default crypto provider for rustls.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
-    info!("QUIC listening on {}", quic_bind_addr);
+    info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(
         config_dir,
         args.quic_cert_hostname,
-        quic_bind_addr,
+        quic_addr,
         None,
-        Arc::clone(&app_config),
+        app_data.clone(),
     );
 
-    // Spawn the QUIC server.
-    tokio::spawn(async move {
-        if let Err(e) = run_quic_server(quic_config, handle_quic_client_connection).await {
-            error!(error = %e, "QUIC server encountered an error");
-        }
-    });
+    // Spawn the QUIC server task.
+    tokio::spawn(run_quic_server_task(quic_config));
 
-    // Handle incoming TCP connections indefinitely.
+    // Start accepting and handling TCP connections.
+    handle_tcp_connections(listener, app_data, active_connections).await
+}
+
+/// Sets up tracing for logging.
+fn setup_tracing() {
+    tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .with_target(true)
+        .with_line_number(true)
+        .init();
+}
+
+/// Resolves a socket address from a string.
+fn resolve_socket_addr(addr: &str) -> Result<SocketAddr> {
+    addr.to_socket_addrs()?
+        .next()
+        .ok_or_else(|| anyhow!("Unable to resolve address: {}", addr))
+}
+
+/// Periodically reports the number of active connections.
+async fn report_active_connections(active_connections: Arc<AtomicUsize>) {
+    let mut previous = 0;
     loop {
-        let (local_socket, _) = match listener.accept().await {
+        sleep(Duration::from_millis(100)).await;
+        let current = active_connections.load(Ordering::Relaxed);
+        if current != previous {
+            info!("Active connections: {}", current);
+            previous = current;
+        }
+    }
+}
+
+/// Runs the QUIC server in its own asynchronous task.
+async fn run_quic_server_task(quic_config: ServerConfig<Arc<ServerAppData>>) {
+    if let Err(e) = run_quic_server(quic_config, handle_quic_client_connection).await {
+        error!(error = %e, "QUIC server encountered an error");
+    }
+}
+
+/// Accepts TCP connections and bridges them to QUIC.
+async fn handle_tcp_connections(
+    listener: TcpListener,
+    app_data: Arc<ServerAppData>,
+    active_connections: Arc<AtomicUsize>,
+) -> Result<()> {
+    loop {
+        let (tcp_stream, peer_addr) = match listener.accept().await {
             Ok(conn) => conn,
             Err(e) => {
                 error!("Failed to accept TCP connection: {}", e);
                 continue;
             }
         };
-        debug!(
-            "New TCP connection from: {:?}",
-            local_socket.peer_addr().ok()
-        );
+        debug!("Accepted TCP connection from {:?}", peer_addr);
 
-        // Try to obtain a QUIC connection from the shared configuration.
-        let quinn_conn = { app_config.connection.lock().unwrap().clone() };
-        let quinn_conn = match quinn_conn {
+        // Try to get the active QUIC connection.
+        let quic_conn = {
+            // Note: If the lock fails, the application will panic.
+            app_data.connection.lock().unwrap().clone()
+        };
+
+        let quic_conn = match quic_conn {
             Some(conn) => conn,
             None => {
-                error!("No QUIC connection available to handle TCP connection");
+                error!("No active QUIC connection available to handle TCP traffic");
                 continue;
             }
         };
 
         // Open a bidirectional QUIC stream.
-        let (quic_send, quic_recv) = match quinn_conn.open_bi().await {
+        let (quic_send, quic_recv) = match quic_conn.open_bi().await {
             Ok(stream) => stream,
             Err(e) => {
-                error!("Failed to open QUIC stream: {}", e);
+                error!("Failed to open QUIC bidirectional stream: {}", e);
                 continue;
             }
         };
         let stream_id = quic_send.id();
-        debug!(
-            "Opened bidirectional QUIC stream (ID: {}) for TCP forwarding",
-            stream_id
-        );
+        debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
         let worker_bundle = QuinnWorkerBundle { quic_recv, quic_send };
-        let stats_clone = Arc::clone(&stats);
+        let connections = active_connections.clone();
 
-        // Spawn a task to bridge data between the TCP connection and the QUIC stream.
+        // Spawn a new task to handle forwarding between TCP and QUIC.
         tokio::spawn(async move {
-            {
-                // Increment connection count.
-                let mut stats = stats_clone.lock().unwrap();
-                stats.connection_count += 1;
+            // Increment active connections.
+            connections.fetch_add(1, Ordering::SeqCst);
+            let start_time = Instant::now();
+
+            if let Err(e) = handle_tcp_to_quic_stream(tcp_stream, worker_bundle).await {
+                error!("Error handling TCP-to-QUIC stream (id {}): {:?}", stream_id, e);
+            } else {
+                debug!("TCP-to-QUIC stream (id {}) completed", stream_id);
             }
 
-            let start = Instant::now();
-            if let Err(e) = handle_tcp_to_quic_stream(local_socket, worker_bundle).await {
-                error!("Error in QUIC/TCP stream handling: {:?}", e);
-            }
-            debug!(
-                "Closed QUIC/TCP stream (ID: {}) after {:?}",
-                stream_id,
-                start.elapsed()
-            );
-
-            {
-                // Decrement connection count.
-                let mut stats = stats_clone.lock().unwrap();
-                stats.connection_count -= 1;
-            }
+            debug!("Stream (id {}) terminated after {:?}", stream_id, start_time.elapsed());
+            // Decrement active connections.
+            connections.fetch_sub(1, Ordering::SeqCst);
         });
     }
 }

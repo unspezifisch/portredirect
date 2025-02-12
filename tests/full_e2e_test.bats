@@ -35,6 +35,8 @@ teardown() {
 }
 
 @test "Tunneled iperf3 test (via portredirect)" {
-  run iperf3 -c 127.0.0.1 -p 10001
+  run iperf3 -c 127.0.0.1 -p 10001 -l 5
+  [ "$status" -eq 0 ]
+  run iperf3 -c 127.0.0.1 -p 10001 -l 5
   [ "$status" -eq 0 ]
 }

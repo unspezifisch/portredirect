@@ -2,9 +2,16 @@
 //
 // License: GPL-3.0-only
 
+use std::error::Error;
+
 use anyhow::{Context, Result};
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncWrite};
-use tracing::info;
+use tracing::{info, warn};
+
+/// Checks whether the error represents a graceful shutdown (error 0).
+fn is_graceful_shutdown<T: Error>(err: &T) -> bool {
+    err.to_string().contains("error 0")
+}
 
 pub async fn forward_bidirectional<A, B, Ax, Bx>(
     a: &mut A,
@@ -18,14 +25,28 @@ where
     Ax: std::fmt::Display,
     Bx: std::fmt::Display,
 {
-    let (n1, n2) = copy_bidirectional(a, b)
-        .await
-        .context("Bidirectional copy failed")?;
-    info!(
-        "Stream id (A={} B={}): forwarded {} bytes in A->B direction and {} bytes in B->A direction",
-        id_a, id_b, n1, n2
-    );
-    Ok(())
+    let result = copy_bidirectional(a, b).await;
+
+    match result {
+        Ok((n1, n2)) => {
+            info!(
+                "Stream id (A={} B={}): forwarded {} bytes in A->B direction and {} bytes in B->A direction",
+                id_a, id_b, n1, n2
+            );
+            Ok(())
+        }
+        Err(err) => {
+            if is_graceful_shutdown(&err) {
+                warn!(
+                    "Stream id (A={} B={}): bidirectional copy finished gracefully (error 0)",
+                    id_a, id_b
+                );
+                Ok(())
+            } else {
+                Err(err).context("Bidirectional copy failed")
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -166,7 +187,8 @@ mod tests {
         let mut failing_stream = FailingStream;
 
         // One of the streams will immediately fail; our function should return an error with the proper context.
-        let result = forward_bidirectional(&mut failing_stream, &mut normal_stream, "fail", "normal").await;
+        let result =
+            forward_bidirectional(&mut failing_stream, &mut normal_stream, "fail", "normal").await;
         assert!(result.is_err());
         let err_msg = format!("{:?}", result.err().unwrap());
         assert!(
@@ -174,5 +196,69 @@ mod tests {
             "Error message did not contain expected context, got: {}",
             err_msg
         );
+    }
+
+    // A stream that simulates a graceful shutdown error (i.e. returns an error whose
+    // message contains "error 0").
+    struct GracefulStream;
+
+    impl AsyncRead for GracefulStream {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<Result<(), std::io::Error>> {
+            Poll::Ready(Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "sending stopped by peer: error 0",
+            )))
+        }
+    }
+
+    impl AsyncWrite for GracefulStream {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<Result<usize, std::io::Error>> {
+            Poll::Ready(Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "sending stopped by peer: error 0",
+            )))
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), std::io::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), std::io::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_forward_bidirectional_graceful_shutdown() -> Result<()> {
+        // Use a normal TestStream for one side.
+        let mut normal_stream = TestStream::new(b"normal");
+        // Use the graceful stream for the other side.
+        let mut graceful_stream = GracefulStream;
+
+        // When one side produces an error containing "error 0", our forward_bidirectional
+        // function should treat it as a graceful shutdown and return Ok(()).
+        forward_bidirectional(
+            &mut normal_stream,
+            &mut graceful_stream,
+            "normal",
+            "graceful",
+        )
+        .await?;
+
+        Ok(())
     }
 }

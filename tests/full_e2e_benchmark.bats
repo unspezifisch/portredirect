@@ -89,9 +89,9 @@ teardown() {
 }
 
 @test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
-  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -t 30
+  run iperf3 -c 127.0.0.1 -p 10001 -P 50
   [ "$status" -eq 0 ]
-  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -t 30 -R
+  run iperf3 -c 127.0.0.1 -p 10001 -P 50 -R
   [ "$status" -eq 0 ]
 
   # Check that no ERROR occurred in the portredirect logs

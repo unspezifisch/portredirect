@@ -5,6 +5,7 @@
 use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
 use portredirect::app_data::ClientAppData;
+use portredirect::client::server_handler::handle_quic_server_connection;
 use portredirect::protocol::auth::client_authenticate;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::quic::transport::QuinnAuthStream;
@@ -142,156 +143,9 @@ async fn main() -> Result<()> {
     );
 
     // Spawn the QUIC client
-    run_quic_client(quic_client_config, handle_quic_to_tcp)
+    run_quic_client(quic_client_config, handle_quic_server_connection)
         .await
         .context("QUIC client thread")?;
 
-    Ok(())
-}
-
-// Handles our custom authentication stream.
-#[instrument[skip(config, connection)]]
-async fn handle_quic_auth(
-    config: Arc<ClientConfig<ClientAppData>>,
-    connection: quinn::Connection,
-) -> Result<QuinnAuthStream> {
-    // Accept the first QUIC stream, which is for authenticating us to the server.
-    debug!("Accepting server-initiated QUIC stream.");
-
-    // Client auth loop. Runs until server is happy.
-    if let Ok((send, recv)) = connection.accept_bi().await {
-        let mut stream = QuinnAuthStream::new(send, recv);
-        debug!("opened bidi channel for AUTH with stream {}", stream);
-
-        match client_authenticate(&mut stream, config.app_data.connection_auth_psk.clone()).await {
-            Ok(()) => {
-                info!("Authentication successful");
-            }
-            Err(e) => {
-                warn!("Authentication failed: {}", e);
-                return Err(anyhow!("failed to authenticate against PR QUIC server"));
-            }
-        }
-
-        Ok(stream)
-    } else {
-        Err(anyhow!("failed to accept bidi AUTH connection"))
-    }
-}
-
-// Handles incoming QUIC streams, forwards them to their destination.
-// Called directly by run_quic_client.
-#[instrument[skip(config, conn)]]
-async fn handle_quic_to_tcp(
-    config: Arc<ClientConfig<ClientAppData>>,
-    conn: quinn::Connection,
-) -> Result<()> {
-    // First, ensure the client is authenticated.
-    let mut auth_stream =
-        handle_quic_auth(Arc::clone(&config), conn.clone())
-            .await
-            .context("failed to authenticate against PR QUIC server")?;
-    tokio::spawn(async move {
-        let mut ping_count = 0usize;
-        loop {
-            let mut buf = [0u8; 16];
-            match auth_stream.read(&mut buf).await {
-                Ok(_) => {
-                    if let Ok(text) = std::str::from_utf8(&buf) {
-                        if text.starts_with("PING") {
-                            ping_count += 1;
-                            info!("Received PING, count: {}", ping_count);
-
-                            match auth_stream.write_all(b"PONG\n").await {
-                                Ok(()) => (),
-                                _ => {
-                                    warn!("Failed to send PONG");
-                                    break;
-                                }
-                            }
-                        } else {
-                            info!("Received data (text): {}", text.trim());
-                        }
-                    } else {
-                        info!("Received data (buf): {:?}", buf);
-                    }
-                }
-                Err(e) => {
-                    warn!("Error reading from auth stream: {}", e);
-                    break;
-                }
-            }
-        }
-    });
-
-    while let Ok((send, recv)) = conn.accept_bi().await {
-        info!("Opened QUIC stream for new forwarded connection");
-
-        let config = Arc::clone(&config);
-        tokio::spawn(async move {
-            if let Err(e) = handle_quic_stream(config, send, recv).await {
-                warn!("Error handling QUIC stream: {}", e);
-            }
-        });
-    }
-
-    debug!("Closed QUIC connection handler");
-    Ok(())
-}
-
-// Handles individual QUIC streams.
-// TODO consolidate with server/main.rs
-#[instrument[skip(config, quic_send, quic_recv)]]
-async fn handle_quic_stream(
-    config: Arc<ClientConfig<ClientAppData>>,
-    mut quic_send: quinn::SendStream,
-    mut quic_recv: quinn::RecvStream,
-) -> Result<(), Error> {
-    let tcp_stream =  // Create TCP connection to remote destination
-        tokio::net::TcpStream::connect(&config.app_data.forward_destination)
-            .await
-            .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
-
-    let stream_id = quic_recv.id();
-    debug!("Starting QUIC->TCP stream handler, stream id {}", stream_id);
-
-    let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
-
-    // Forward TCP -> QUIC
-    let tcp_to_quic: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            quic_send.write_all(&buf[..bytes_read]).await?;
-        }
-        quic_send.finish()?; // Signal end of stream
-        _ = quic_send.stopped().await; // Wait for the stream to be closed
-        Ok(())
-    });
-
-    // Forward QUIC -> TCP
-    let quic_to_tcp: JoinHandle<Result<()>> = tokio::spawn(async move {
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(Some(bytes_read)) = quic_recv.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            tcp_write_half.write_all(&buf[..bytes_read]).await?;
-        }
-        Ok(())
-    });
-
-    // Wait for both directions to complete.
-    let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
-    if let Err(e) = result {
-        return Err(anyhow!(
-            "Error in receive side of QUIC tunnel for TCP forwarding: {:?}",
-            e
-        ));
-    }
-
-    debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
     Ok(())
 }

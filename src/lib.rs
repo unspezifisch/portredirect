@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::{path::PathBuf, time::Duration};
 
 pub mod app_data;
+pub mod client;
 pub mod protocol;
 pub mod quic;
 pub mod server;

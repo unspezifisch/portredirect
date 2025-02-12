@@ -65,16 +65,16 @@ teardown() {
 }
 
 @test "Baseline iperf3 test (direct connection)" {
-  run iperf3 -c 127.0.0.1 -p 5201 -l 10G
+  run iperf3 -c 127.0.0.1 -p 5201
   [ "$status" -eq 0 ]
-  run iperf3 -c 127.0.0.1 -p 5201 -l 10G -R
+  run iperf3 -c 127.0.0.1 -p 5201 -R
   [ "$status" -eq 0 ]
 }
 
 @test "Tunneled iperf3 test (via portredirect)" {
-  run iperf3 -c 127.0.0.1 -p 10001 -l 100G
+  run iperf3 -c 127.0.0.1 -p 10001
   [ "$status" -eq 0 ]
-  run iperf3 -c 127.0.0.1 -p 10001 -l 100G -R
+  run iperf3 -c 127.0.0.1 -p 10001 -R
   [ "$status" -eq 0 ]
 
   # Check that no ERROR occurred in the portredirect logs
@@ -89,9 +89,9 @@ teardown() {
 }
 
 @test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
-  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -l 1G
+  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -t 30
   [ "$status" -eq 0 ]
-  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -l 1G -R
+  run iperf3 -c 127.0.0.1 -p 10001 -P 100 -t 30 -R
   [ "$status" -eq 0 ]
 
   # Check that no ERROR occurred in the portredirect logs

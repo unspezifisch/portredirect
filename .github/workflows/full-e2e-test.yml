@@ -45,6 +45,7 @@ jobs:
       - name: Show Log Files
         if: always()
         run: |
+          cat iperf_server.log || true
           cat ./bats-logs/* || true
 
       - name: Upload Logs
@@ -53,5 +54,6 @@ jobs:
         with:
           name: portredirect-e2e-test-logs
           path: |
+            iperf_server.log
             ./bats-logs/*
 

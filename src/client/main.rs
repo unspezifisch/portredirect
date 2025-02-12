@@ -5,7 +5,9 @@
 use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
 use portredirect::app_data::ClientAppData;
+use portredirect::protocol::auth::client_authenticate;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
+use portredirect::quic::transport::QuinnAuthStream;
 use portredirect::{get_config_dir, PortRedirectProtocol};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
@@ -153,81 +155,26 @@ async fn main() -> Result<()> {
 async fn handle_quic_auth(
     config: Arc<ClientConfig<ClientAppData>>,
     connection: quinn::Connection,
-) -> Result<(quinn::SendStream, quinn::RecvStream)> {
+) -> Result<QuinnAuthStream> {
     // Accept the first QUIC stream, which is for authenticating us to the server.
     debug!("Accepting server-initiated QUIC stream.");
 
     // Client auth loop. Runs until server is happy.
-    if let Ok((mut send, mut recv)) = connection.accept_bi().await {
-        debug!("opened bidi channel for AUTH");
+    if let Ok((send, recv)) = connection.accept_bi().await {
+        let mut stream = QuinnAuthStream::new(send, recv);
+        debug!("opened bidi channel for AUTH with stream {}", stream);
 
-        // Read challenge from the QUIC stream
-        let mut buffer = [0u8; PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH];
-        recv.read(&mut buffer)
-            .await
-            .map_err(|e| anyhow!("failed to read from QUIC stream: {}", e))?;
-
-        // Convert the buffer to a string
-        let received =
-            std::str::from_utf8(&buffer).map_err(|e| anyhow!("received invalid UTF-8: {}", e))?;
-
-        // Split into lines
-        let mut lines = received.lines();
-
-        // Validate the first line
-        let first_line = lines
-            .next()
-            .ok_or_else(|| anyhow!("missing first line in authentication message"))?;
-        if first_line != "WHO THE HECK ARE YOU?" {
-            return Err(anyhow!("unexpected first line: {}", first_line));
-        }
-
-        // Validate the second line (challenge request)
-        let second_line = lines
-            .next()
-            .ok_or_else(|| anyhow!("missing second line in authentication message"))?;
-        debug!("Received challenge request: {}", second_line);
-
-        // Compute the SHA-256 hash and hex-encode it
-        let mut hasher = Sha256::new();
-        hasher.update(second_line);
-        hasher.update(config.app_data.connection_auth_psk.expose_secret());
-        let response_hex = hex::encode(hasher.finalize());
-        debug!("Responding with SHA-256 hex: {}", response_hex);
-
-        // Send the response to the server
-        let response = response_hex + "\n";
-        send.write_all(response.as_bytes())
-            .await
-            .map_err(|e| anyhow!("failed to send response: {}", e))?;
-        send.flush().await?;
-
-        // We expect a line with HAPPY or BAD.
-        let mut buffer = [0u8; 16];
-        recv.read(&mut buffer)
-            .await
-            .map_err(|e| anyhow!("failed to read from QUIC stream (final): {}", e))?;
-
-        if let Ok(buffer_str) = std::str::from_utf8(&buffer) {
-            if buffer_str[.."HAPPY".len()] == *"HAPPY" {
-                // cool
-                info!("Authentication successful.")
-            } else {
-                // not cool
-                return Err(anyhow!(
-                    "Server was unhappy with our response: {}.",
-                    buffer_str.trim()
-                ));
+        match client_authenticate(&mut stream, config.app_data.connection_auth_psk.clone()).await {
+            Ok(()) => {
+                info!("Authentication successful");
             }
-        } else {
-            // not cool either
-            return Err(anyhow!(
-                "Server was so unhappy with our response that it sent garbage."
-            ));
+            Err(e) => {
+                warn!("Authentication failed: {}", e);
+                return Err(anyhow!("failed to authenticate against PR QUIC server"));
+            }
         }
 
-        debug!("Authentication routine done.");
-        Ok((send, recv))
+        Ok(stream)
     } else {
         Err(anyhow!("failed to accept bidi AUTH connection"))
     }
@@ -241,7 +188,7 @@ async fn handle_quic_to_tcp(
     conn: quinn::Connection,
 ) -> Result<()> {
     // First, ensure the client is authenticated.
-    let (mut auth_stream_send, mut auth_stream_recv) =
+    let mut auth_stream =
         handle_quic_auth(Arc::clone(&config), conn.clone())
             .await
             .context("failed to authenticate against PR QUIC server")?;
@@ -249,14 +196,14 @@ async fn handle_quic_to_tcp(
         let mut ping_count = 0usize;
         loop {
             let mut buf = [0u8; 16];
-            match auth_stream_recv.read(&mut buf).await {
-                Ok(Some(_)) => {
+            match auth_stream.read(&mut buf).await {
+                Ok(_) => {
                     if let Ok(text) = std::str::from_utf8(&buf) {
                         if text.starts_with("PING") {
                             ping_count += 1;
                             info!("Received PING, count: {}", ping_count);
 
-                            match auth_stream_send.write_all(b"PONG\n").await {
+                            match auth_stream.write_all(b"PONG\n").await {
                                 Ok(()) => (),
                                 _ => {
                                     warn!("Failed to send PONG");
@@ -269,10 +216,6 @@ async fn handle_quic_to_tcp(
                     } else {
                         info!("Received data (buf): {:?}", buf);
                     }
-                }
-                Ok(None) => {
-                    warn!("Stream is finished");
-                    break;
                 }
                 Err(e) => {
                     warn!("Error reading from auth stream: {}", e);

@@ -12,7 +12,7 @@ use tracing::{debug, info, instrument, warn};
 
 // Handles our custom authentication stream.
 #[instrument[skip(config, connection)]]
-pub async fn handle_quic_auth(
+pub async fn handle_quic_auth_client_side(
     config: Arc<ClientConfig<ClientAppData>>,
     connection: quinn::Connection,
 ) -> Result<GenericQuicStream> {

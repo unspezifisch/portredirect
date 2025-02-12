@@ -1,3 +1,7 @@
+// PortRedirector-RS Server - Bridge TCP to QUIC stream
+//
+// License: GPL-3.0-only
+
 use crate::forward::forward_bidirectional;
 use crate::quic::transport::GenericQuicStream;
 use anyhow::Result;

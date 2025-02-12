@@ -2,7 +2,7 @@
 //
 // License: GPL-3.0-only
 
-use crate::client::auth::handle_quic_auth;
+use crate::client::auth::handle_quic_auth_client_side;
 use crate::client::tcp::handle_tcp_forwarding;
 use crate::quic::client::ClientConfig;
 use crate::{app_data::ClientAppData, quic::transport::GenericQuicStream};
@@ -11,17 +11,20 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info, instrument, warn};
 
-// Handles incoming QUIC streams, forwards them to their destination.
+// Handles the connection to the QUIC server, authenticates and keeps it alive.
 // Called directly by run_quic_client.
 #[instrument[skip(config, conn)]]
 pub async fn handle_quic_server_connection(
     config: Arc<ClientConfig<ClientAppData>>,
     conn: quinn::Connection,
 ) -> Result<()> {
-    // First, ensure the client is authenticated.
-    let mut auth_stream = handle_quic_auth(Arc::clone(&config), conn.clone())
+    // We have just connected to the QUIC server. We need to prove we know the PSK to authenticate.
+
+    let mut auth_stream = handle_quic_auth_client_side(Arc::clone(&config), conn.clone())
         .await
         .context("failed to authenticate against PR QUIC server")?;
+
+    // We are authenticated. Now we need to keep the QUIC connection alive so we're ready if user connections needs to be forwarded.
     tokio::spawn(async move {
         let mut ping_count = 0usize;
         loop {

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{interval, timeout, Duration};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::PortRedirectProtocol;
 
@@ -78,57 +78,46 @@ where
 
 /// Runs the keepalive loop on the server side.
 ///
-/// This loop sends a PING every `KEEP_ALIVE_INTERVAL` and waits (up to `READ_TIMEOUT`)
-/// for a newline-terminated response. If the response matches `PONG_MESSAGE` then the
-/// ping is counted as successful; any deviation, error, or timeout results in an exit
-/// from the loop.
+/// Instead of sending periodic PING messages, the server now waits for
+/// incoming PING messages from the remote peer. When a PING is received,
+/// the server replies with a PONG. Any error (read/write, unexpected message,
+/// timeout, or connection close) causes the loop to exit gracefully.
 pub async fn run_keepalive_server_loop<T>(mut auth_stream: T) -> Result<()>
 where
-    T: AsyncReadExt + AsyncWriteExt + Unpin,
+    T: AsyncReadExt + AsyncWriteExt + AsyncBufReadExt + Unpin,
 {
-    let mut tick_interval = interval(KEEP_ALIVE_INTERVAL);
-    let mut pong_count = 0usize;
-
     loop {
-        // Wait for the next keepalive tick.
-        tick_interval.tick().await;
-
-        // Send the PING message.
-        if let Err(e) = auth_stream.write_all(PING_MESSAGE).await {
-            warn!("Failed to send PING: {}", e);
-            break;
-        }
-        if let Err(e) = auth_stream.flush().await {
-            warn!("Failed to flush PING: {}", e);
-            break;
-        }
-        debug!("Sent PING");
-
-        // Read the PONG response with a timeout.
-        let mut response_buf = Vec::with_capacity(16);
-        let mut reader = BufReader::new(&mut auth_stream);
-        match timeout(READ_TIMEOUT, reader.read_until(b'\n', &mut response_buf)).await {
+        // Wait for an incoming message (expected to be PING).
+        let mut buf = Vec::with_capacity(16);
+        match timeout(READ_TIMEOUT, auth_stream.read_until(b'\n', &mut buf)).await {
             Ok(Ok(0)) => {
                 warn!("Connection closed by remote during keepalive");
                 break;
             }
             Ok(Ok(_)) => {
-                let response = std::str::from_utf8(&response_buf)
-                    .context("Received invalid UTF-8 response")?;
-                if response == PONG_MESSAGE {
-                    pong_count += 1;
-                    info!("Received PONG, count: {}", pong_count);
+                let received = std::str::from_utf8(&buf)
+                    .context("Received invalid UTF-8 message")?;
+                if received == "PING\n" {
+                    info!("Received PING, sending PONG");
+                    if let Err(e) = auth_stream.write_all(PONG_MESSAGE.as_bytes()).await {
+                        warn!("Failed to send PONG: {}", e);
+                        break;
+                    }
+                    if let Err(e) = auth_stream.flush().await {
+                        warn!("Failed to flush PONG: {}", e);
+                        break;
+                    }
                 } else {
-                    warn!("Unexpected response to PING: {}", response.trim());
+                    warn!("Unexpected message received: {}", received.trim());
                     break;
                 }
             }
             Ok(Err(e)) => {
-                warn!("Failed to read PONG: {:?}", e);
+                warn!("Failed to read from stream: {:?}", e);
                 break;
             }
             Err(_) => {
-                warn!("Timed out waiting for PONG response");
+                warn!("Timed out waiting for PING message");
                 break;
             }
         }
@@ -155,10 +144,6 @@ mod tests {
     }
     const TEST_KEEP_ALIVE_INTERVAL: Duration = DummyProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS;
     const TEST_READ_TIMEOUT: Duration = Duration::from_millis(200);
-
-    // Define the expected messages.
-    const PING_MESSAGE: &[u8] = b"PING\n";
-    const PONG_MESSAGE: &str = "PONG\n";
 
     // --- Combined loop helper (for both client and server) ---
 

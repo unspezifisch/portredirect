@@ -2,6 +2,7 @@
 //
 // License: GPL-3.0-only
 
+use crate::protocol::keepalive::run_keepalive_client_loop;
 use crate::quic::client::ClientConfig;
 use crate::{app_data::ClientAppData, quic::transport::GenericQuicStream};
 use anyhow::{Context, Result};
@@ -9,7 +10,6 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
 use super::auth::handle_quic_auth_client_side;
-use super::keepalive::run_keepalive_loop;
 use super::tcp::handle_tcp_forwarding;
 
 /// Handles the connection to the QUIC server, authenticates and keeps it alive.
@@ -28,7 +28,7 @@ pub async fn handle_quic_server_connection(
     // Start the keepalive loop to maintain the QUIC connection.
     // This loop periodically sends a PING and expects a PONG response.
     tokio::spawn(async move {
-        if let Err(e) = run_keepalive_loop(auth_stream).await {
+        if let Err(e) = run_keepalive_client_loop(auth_stream).await {
             warn!("Keepalive loop terminated with error: {}", e);
         }
     });

@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use tokio::net::TcpListener;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info, span, Level};
+use tracing::{debug, error, info, instrument, span, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser, Debug)]
@@ -139,6 +139,7 @@ async fn report_active_connections(active_connections: Arc<AtomicUsize>) {
 }
 
 /// Runs the QUIC server in its own asynchronous task.
+#[instrument(skip(quic_config))]
 async fn run_quic_server_task(quic_config: ServerConfig<Arc<ServerAppData>>) {
     if let Err(e) = run_quic_server(quic_config, handle_quic_client_connection).await {
         error!(error = %e, "QUIC server encountered an error");
@@ -146,6 +147,7 @@ async fn run_quic_server_task(quic_config: ServerConfig<Arc<ServerAppData>>) {
 }
 
 /// Accepts TCP connections and bridges them to QUIC.
+#[instrument(skip(listener, app_data))]
 async fn handle_tcp_connections(
     listener: TcpListener,
     app_data: Arc<ServerAppData>,

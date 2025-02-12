@@ -5,6 +5,8 @@
 use crate::protocol::utils::ElapsedMinutes;
 use crate::protocol::utils::TimeProvider;
 use anyhow::{anyhow, Result};
+use secrecy::ExposeSecret;
+use secrecy::SecretString;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -14,7 +16,7 @@ const CHALLENGE_MAX_LEN: usize = 128;
 /// Server-side authentication: send challenge, receive and verify the client’s response.
 pub async fn server_authenticate<S>(
     stream: &mut S,
-    psk: &[u8],
+    psk: SecretString,
     time_provider: &impl TimeProvider,
 ) -> Result<()>
 where
@@ -47,7 +49,7 @@ where
     // 4. Compute expected response.
     let mut hasher = Sha256::new();
     hasher.update(challenge.as_bytes());
-    hasher.update(psk);
+    hasher.update(psk.expose_secret());
     let expected_response = hex::encode(hasher.finalize());
 
     // 5. Verify.
@@ -63,7 +65,7 @@ where
 }
 
 /// Client-side authentication: receive the challenge, compute the response, send it.
-pub async fn client_authenticate<S>(stream: &mut S, psk: &[u8]) -> Result<()>
+pub async fn client_authenticate<S>(stream: &mut S, psk: SecretString) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -84,7 +86,7 @@ where
     // 2. Compute response.
     let mut hasher = Sha256::new();
     hasher.update(challenge.as_bytes());
-    hasher.update(psk);
+    hasher.update(psk.expose_secret());
     let response = hex::encode(hasher.finalize()) + "\n";
 
     // 3. Send response.
@@ -110,16 +112,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_authentication_protocol() -> Result<()> {
-        let psk = b"test-secret";
+        let test_psk = "test-secret";
+        
         // Create an in‑memory duplex stream.
         let (mut client_side, mut server_side) = duplex(1024);
 
         // Run server and client auth concurrently.
         let server = tokio::spawn(async move {
-            server_authenticate(&mut server_side, psk, &SystemTimeProvider).await
+            server_authenticate(&mut server_side, test_psk.into(), &SystemTimeProvider).await
         });
 
-        let client = tokio::spawn(async move { client_authenticate(&mut client_side, psk).await });
+        let client = tokio::spawn(async move { client_authenticate(&mut client_side, test_psk.into()).await });
 
         server.await??;
         client.await??;

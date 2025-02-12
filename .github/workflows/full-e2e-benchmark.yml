@@ -20,8 +20,8 @@ jobs:
       - name: Install iperf3 and bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y iperf3
           sudo apt-get install -y bats
+          sudo apt-get install -y iperf3
 
       - name: Run BATS test(s)
         run: bats tests/full_e2e_benchmark.bats

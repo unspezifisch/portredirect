@@ -3,6 +3,7 @@
 // License: GPL-3.0-only
 
 use quinn::{RecvStream, SendStream};
+use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -16,6 +17,12 @@ pub struct QuinnAuthStream {
 impl QuinnAuthStream {
     pub fn new(send: SendStream, recv: RecvStream) -> Self {
         Self { send, recv }
+    }
+}
+
+impl Display for QuinnAuthStream {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "QuinnAuthStream(send: {:?}, recv: {:?})", self.send, self.recv)
     }
 }
 

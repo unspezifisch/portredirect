@@ -5,7 +5,10 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use portredirect::app_data::ServerAppData;
+use portredirect::protocol::auth::server_authenticate;
+use portredirect::protocol::utils::SystemTimeProvider;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
+use portredirect::quic::transport::QuinnAuthStream;
 use portredirect::{get_config_dir, ByteCount, PortRedirectProtocol};
 use rand::rngs::OsRng;
 use rand::RngCore;
@@ -292,110 +295,34 @@ async fn handle_tcp_to_quic_stream(
 async fn handle_quic_client_auth(
     config: Arc<ServerConfig<Arc<ServerAppData>>>,
     conn: quinn::Connection,
-) -> Result<(quinn::SendStream, quinn::RecvStream)> {
+) -> Result<QuinnAuthStream> {
     debug!("Authenticating PR QUIC client");
 
     // An unknown client just connected, they need to authenticate or get kicked.
-    let (mut send, mut recv) = conn
+    let (send, recv) = conn
         .open_bi()
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
-    debug!("opened bidi channel for AUTH");
+    let mut stream = QuinnAuthStream::new(send, recv);
+    debug!("opened bidi channel for AUTH with stream id {}", stream);
 
-    // Step 1: Generate a challenge
-    // Add a (coarse) timestamp to guarantee unique challenge.
-    let coarse_unix_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() / 60;
-
-    // Generate 32 random bytes
-    let mut random_bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut random_bytes);
-    let random_bytes_hex = hex::encode(random_bytes);
-
-    let challenge = format!(
-        "this-is-the-challenge-{}-at-{}-pr-v1",
-        random_bytes_hex, coarse_unix_time
-    );
-    debug!(
-        challenge_len = challenge.len(),
-        challenge = challenge,
-        "AUTH: sending challenge"
-    );
-
-    // Step 2: Send the challenge
-    let auth_start = Instant::now();
-    let request = format!("WHO THE HECK ARE YOU?\n{}\n", challenge);
-    assert!(
-        request.len() <= PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH,
-        "Challenge string exceeds maximum length"
-    );
-    send.write_all(request.as_bytes())
-        .await
-        .map_err(|e| anyhow!("failed to send AUTH request: {}", e))?;
-    send.flush().await?;
-
-    // Step 3: Wait for the client's response
-    // SHA-256 is 32 bytes, so hex-encoded length is 64.
-    // Add 1 byte for LF ("\n").
-    let mut buffer = [0u8; 65];
-    let n = recv
-        .read(&mut buffer)
-        .await
-        .map_err(|e| anyhow!("failed to read AUTH response: {}", e))?;
-    debug!(
-        response_len = n,
-        "AUTH: got response in {:?}",
-        auth_start.elapsed()
-    );
-
-    // Validate length of response.
-    let n = n.unwrap_or(0);
-    if n != buffer.len() {
-        return Err(anyhow!(
-            "wrong length AUTH response n={} (want {})",
-            n,
-            buffer.len()
-        ));
+    match server_authenticate(
+        &mut stream,
+        config.app_data.connection_auth_psk.to_owned(),
+        &SystemTimeProvider,
+    )
+    .await
+    {
+        Ok(()) => {
+            info!("Authenticated PR QUIC client OK");
+        }
+        Err(e) => {
+            error!("Failed to authenticate PR QUIC client: {:?}", e);
+            return Err(e);
+        }
     }
 
-    // Decode to string.
-    let client_response =
-        std::str::from_utf8(&buffer[..n]).map_err(|e| anyhow!("invalid UTF-8: {}", e))?;
-    if client_response.len() != buffer.len() {
-        return Err(anyhow!(
-            "wrong length AUTH response n_decoded={} (want {})",
-            client_response.len(),
-            buffer.len()
-        ));
-    }
-    if !client_response.ends_with("\n") {
-        return Err(anyhow!("wrong line terminator"));
-    }
-
-    // Step 4: Compute expected response
-    let mut hasher = Sha256::new();
-    hasher.update(challenge);
-    hasher.update(config.app_data.connection_auth_psk.expose_secret());
-    let expected_response = hex::encode(hasher.finalize()) + "\n";
-
-    // Step 5: Validate the client's response
-    if client_response == expected_response {
-        // Send good result.
-        send.write_all(b"HAPPY\n")
-            .await
-            .map_err(|e| anyhow!("failed to send HAPPY response: {}", e))?;
-        send.flush().await?;
-    } else {
-        // Send bad result.
-        send.write_all(b"BAD\n")
-            .await
-            .map_err(|e| anyhow!("failed to send BAD response: {}", e))?;
-        send.flush().await?;
-        send.finish()?;
-        return Err(anyhow!("Authentication failed, response mismatch"));
-    }
-    debug!("Authenticated PR QUIC client OK");
-
-    Ok((send, recv))
+    Ok(stream)
 }
 
 // Handles one PR QUIC client connection.
@@ -411,7 +338,7 @@ async fn handle_quic_client_connection(
     );
 
     // First, ensure the client is authenticated.
-    let (mut auth_stream_send, mut auth_stream_recv) =
+    let mut auth_stream =
         handle_quic_client_auth(Arc::clone(&config), conn.clone())
             .await
             .with_context(|| {
@@ -433,19 +360,19 @@ async fn handle_quic_client_connection(
         sleep(PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS).await;
 
         // ping the client
-        if let Err(e) = auth_stream_send.write_all(b"PING\n").await {
+        if let Err(e) = auth_stream.write_all(b"PING\n").await {
             error!("Failed to send PING: {:?}", e);
             break;
         }
-        if let Err(e) = auth_stream_send.flush().await {
+        if let Err(e) = auth_stream.flush().await {
             error!("Failed to flush PING: {:?}", e);
             break;
         }
 
         // receive response from client
         let mut response_buf = [0u8; 5];
-        match auth_stream_recv.read(&mut response_buf).await {
-            Ok(Some(n)) => {
+        match auth_stream.read(&mut response_buf).await {
+            Ok(n) => {
                 let response = std::str::from_utf8(&response_buf[..n])?;
                 if response == "PONG\n" {
                     pong_count += 1;
@@ -454,10 +381,6 @@ async fn handle_quic_client_connection(
                     error!("Unexpected response to PING: {:?}", response);
                     break;
                 }
-            }
-            Ok(None) => {
-                warn!("Stream is finished");
-                break;
             }
             Err(e) => {
                 error!("Failed to read PONG: {:?}", e);

@@ -1,3 +1,7 @@
+// PortRedirector-RS
+//
+// License: GPL-3.0-only
+
 use anyhow::{Context, Result};
 use std::{path::PathBuf, time::Duration};
 

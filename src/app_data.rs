@@ -1,3 +1,7 @@
+// PortRedirector-RS
+//
+// License: GPL-3.0-only
+
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};

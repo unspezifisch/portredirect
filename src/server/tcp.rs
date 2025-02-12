@@ -2,24 +2,11 @@
 //
 // License: GPL-3.0-only
 
-use crate::app_data::ServerAppData;
-use crate::protocol::auth::server_authenticate;
-use crate::protocol::utils::SystemTimeProvider;
-use crate::quic::server::{run_quic_server, ServerConfig};
-use crate::quic::transport::QuinnAuthStream;
-use crate::server::auth::handle_quic_client_auth;
-use crate::{get_config_dir, ByteCount, PortRedirectProtocol};
-use anyhow::{anyhow, Context, Result};
-use clap::Parser;
-use secrecy::SecretString;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use crate::{ByteCount, PortRedirectProtocol};
+use anyhow::{anyhow, Result};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, Level};
+use tracing::{debug, info};
 
 use super::utils::QuinnWorkerBundle;
 

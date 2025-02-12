@@ -5,20 +5,11 @@
 use crate::app_data::ServerAppData;
 use crate::protocol::auth::server_authenticate;
 use crate::protocol::utils::SystemTimeProvider;
-use crate::quic::server::{run_quic_server, ServerConfig};
+use crate::quic::server::ServerConfig;
 use crate::quic::transport::QuinnAuthStream;
-use crate::{get_config_dir, ByteCount, PortRedirectProtocol};
-use anyhow::{anyhow, Context, Result};
-use clap::Parser;
-use secrecy::SecretString;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, Level};
+use anyhow::{anyhow, Result};
+use std::sync::Arc;
+use tracing::{debug, error, info, instrument};
 
 // Authenticates the PR QUIC client to us, the server.
 // Called by handle_quic_client_connection.

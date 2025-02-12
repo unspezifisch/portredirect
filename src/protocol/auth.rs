@@ -111,9 +111,9 @@ mod tests {
     use tokio::io::duplex;
 
     #[tokio::test]
-    async fn test_authentication_protocol() -> Result<()> {
+    async fn test_authentication_protocol_good() -> Result<()> {
         let test_psk = "test-secret";
-        
+
         // Create an in‑memory duplex stream.
         let (mut client_side, mut server_side) = duplex(1024);
 
@@ -122,10 +122,60 @@ mod tests {
             server_authenticate(&mut server_side, test_psk.into(), &SystemTimeProvider).await
         });
 
-        let client = tokio::spawn(async move { client_authenticate(&mut client_side, test_psk.into()).await });
+        let client =
+            tokio::spawn(
+                async move { client_authenticate(&mut client_side, test_psk.into()).await },
+            );
 
         server.await??;
         client.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_authentication_protocol_bad_psk() -> Result<()> {
+        let test_psk1 = "test-secret";
+        let test_psk2 = "another-test-secret";
+
+        // Create an in‑memory duplex stream.
+        let (mut client_side, mut server_side) = duplex(1024);
+
+        // Run server and client auth concurrently.
+        let server = tokio::spawn(async move {
+            server_authenticate(&mut server_side, test_psk1.into(), &SystemTimeProvider).await
+        });
+
+        let client =
+            tokio::spawn(
+                async move { client_authenticate(&mut client_side, test_psk2.into()).await },
+            );
+
+        // Await both tasks. Use `expect` to panic if the task itself panics.
+        let server_res = server.await.expect("server task panicked");
+        let client_res = client.await.expect("client task panicked");
+
+        // In a bad authentication, we expect at least one of the two sides to error.
+        // Here, we check that if the server returned Ok, then the client must have failed;
+        // otherwise, if the server failed, we check its error.
+        if server_res.is_ok() {
+            let client_err = client_res.expect_err("client_authenticate should have failed");
+            assert!(
+                client_err
+                    .to_string()
+                    .contains("Authentication failed: response mismatch"),
+                "Unexpected client error message: {}",
+                client_err
+            );
+        } else {
+            let server_err = server_res.expect_err("server_authenticate should have failed");
+            assert!(
+                server_err
+                    .to_string()
+                    .contains("Authentication failed: response mismatch"),
+                "Unexpected server error message: {}",
+                server_err
+            );
+        }
         Ok(())
     }
 }

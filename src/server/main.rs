@@ -21,7 +21,7 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, Level};
 
 #[derive(Debug)]
-struct WorkerBundle {
+struct QuinnWorkerBundle {
     quic_recv: quinn::RecvStream,
     quic_send: quinn::SendStream,
 }
@@ -184,7 +184,7 @@ async fn main() -> Result<()> {
             stream_id
         );
 
-        let worker_bundle = WorkerBundle {
+        let worker_bundle = QuinnWorkerBundle {
             quic_recv,
             quic_send,
         };
@@ -221,7 +221,7 @@ async fn main() -> Result<()> {
 #[allow(unused)]
 async fn handle_tcp_to_quic_stream(
     mut tcp_stream: tokio::net::TcpStream,
-    mut bundle: WorkerBundle,
+    mut bundle: QuinnWorkerBundle,
 ) -> Result<()> {
     let stream_id = bundle.quic_send.id();
     let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();

@@ -4,17 +4,11 @@
 
 use crate::app_data::ClientAppData;
 use crate::protocol::auth::client_authenticate;
-use crate::quic::client::{run_quic_client, ClientConfig};
+use crate::quic::client::ClientConfig;
 use crate::quic::transport::QuinnAuthStream;
-use crate::{get_config_dir, PortRedirectProtocol};
-use anyhow::{anyhow, Context, Error, Result};
-use clap::Parser;
-use secrecy::SecretString;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::task::JoinHandle;
-use tracing::{debug, info, instrument, span, warn, Level};
+use anyhow::{anyhow, Result};
+use std::sync::Arc;
+use tracing::{debug, info, instrument, warn};
 
 // Handles our custom authentication stream.
 #[instrument[skip(config, connection)]]

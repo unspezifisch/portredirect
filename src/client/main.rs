@@ -2,20 +2,16 @@
 //
 // License: GPL-3.0-only
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{Context, Result};
 use clap::Parser;
 use portredirect::app_data::ClientAppData;
 use portredirect::client::server_handler::handle_quic_server_connection;
-use portredirect::protocol::auth::client_authenticate;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
-use portredirect::quic::transport::QuinnAuthStream;
-use portredirect::{get_config_dir, PortRedirectProtocol};
+use portredirect::get_config_dir;
 use secrecy::SecretString;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::task::JoinHandle;
-use tracing::{debug, info, instrument, span, warn, Level};
+use tracing::{info, span, Level};
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]

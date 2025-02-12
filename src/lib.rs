@@ -27,10 +27,9 @@ pub fn get_config_dir() -> Result<PathBuf> {
 pub struct PortRedirectProtocol;
 
 impl PortRedirectProtocol {
-    pub const CONNECTION_KEEPALIVE_INTERVAL_SECONDS: Duration = Duration::from_secs(25);
+    pub const CONNECTION_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+    pub const CONNECTION_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(2);
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
-    pub const TCP_QUIC_FORWARDING_BUFFER_SIZE: usize = 1024 * 10;
-    pub const TCP_DIRECT_FORWARDING_BUFFER_SIZE: usize = 1024 * 10;
 }
 
 pub type ByteCount = u64;

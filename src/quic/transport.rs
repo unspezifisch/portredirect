@@ -90,7 +90,7 @@ impl AsyncRead for GenericQuicStream {
 impl AsyncBufRead for GenericQuicStream {
     /// Fills the internal buffer (if empty) and returns a slice of the available data.
     fn poll_fill_buf<'a>(
- self: Pin<&'a mut Self>,
+        self: Pin<&'a mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<&'a [u8], io::Error>> {
         // Use get_mut() to work with the inner value.
@@ -124,7 +124,7 @@ impl AsyncBufRead for GenericQuicStream {
     }
 
     /// Advances the internal buffer by consuming `amt` bytes.
-    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+    fn consume(self: Pin<&mut Self>, amt: usize) {
         let this = self.get_mut();
         this.pos = cmp::min(this.pos + amt, this.buf.len());
         if this.pos == this.buf.len() {

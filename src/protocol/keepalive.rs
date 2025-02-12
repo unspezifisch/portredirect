@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{interval, timeout, Duration};
 use tracing::{info, warn};
@@ -6,13 +6,13 @@ use tracing::{info, warn};
 use crate::PortRedirectProtocol;
 
 /// The amount of time to wait for a PONG response before timing out.
-const READ_TIMEOUT: Duration = Duration::from_secs(10);
+const READ_TIMEOUT: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_TIMEOUT;
 /// How often a PING is sent over the connection.
-const KEEP_ALIVE_INTERVAL: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS;
+const KEEP_ALIVE_INTERVAL: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL;
 /// The PING message sent to the remote peer.
 const PING_MESSAGE: &[u8] = b"PING\n";
 /// The expected PONG response from the remote peer.
-const PONG_MESSAGE: &str = "PONG\n";
+const PONG_MESSAGE: &[u8] = b"PONG\n";
 
 /// Runs the keepalive loop on the client side.
 ///
@@ -52,13 +52,11 @@ where
                 break;
             }
             Ok(Ok(_)) => {
-                let response = std::str::from_utf8(&response_buf)
-                    .context("Received invalid UTF-8 response")?;
-                if response == PONG_MESSAGE {
+                if response_buf == PONG_MESSAGE {
                     pong_count += 1;
                     info!("Received PONG, count: {}", pong_count);
                 } else {
-                    warn!("Unexpected response: {}", response.trim());
+                    warn!("Unexpected response: {:?}", response_buf);
                     break;
                 }
             }
@@ -89,17 +87,20 @@ where
     loop {
         // Wait for an incoming message (expected to be PING).
         let mut buf = Vec::with_capacity(16);
-        match timeout(READ_TIMEOUT, auth_stream.read_until(b'\n', &mut buf)).await {
+        match timeout(
+            KEEP_ALIVE_INTERVAL + READ_TIMEOUT,
+            auth_stream.read_until(b'\n', &mut buf),
+        )
+        .await
+        {
             Ok(Ok(0)) => {
                 warn!("Connection closed by remote during keepalive");
                 break;
             }
             Ok(Ok(_)) => {
-                let received = std::str::from_utf8(&buf)
-                    .context("Received invalid UTF-8 message")?;
-                if received == "PING\n" {
+                if buf == PING_MESSAGE {
                     info!("Received PING, sending PONG");
-                    if let Err(e) = auth_stream.write_all(PONG_MESSAGE.as_bytes()).await {
+                    if let Err(e) = auth_stream.write_all(PONG_MESSAGE).await {
                         warn!("Failed to send PONG: {}", e);
                         break;
                     }
@@ -108,7 +109,7 @@ where
                         break;
                     }
                 } else {
-                    warn!("Unexpected message received: {}", received.trim());
+                    warn!("Unexpected message received: {:?}", buf);
                     break;
                 }
             }
@@ -177,8 +178,7 @@ mod tests {
             {
                 Ok(Ok(0)) => break, // connection closed
                 Ok(Ok(_)) => {
-                    let response = std::str::from_utf8(&response_buf)?;
-                    if response == PONG_MESSAGE {
+                    if response_buf == PONG_MESSAGE {
                         pong_count += 1;
                     } else {
                         break;
@@ -241,7 +241,7 @@ mod tests {
         builder.read(b"PONG\n");
         builder.build()
     }
-    
+
     /// Builds a mock stream that returns an incorrect response.
     fn build_wrong_response() -> tokio_test::io::Mock {
         let mut builder = Builder::new();

@@ -10,18 +10,15 @@ use portredirect::protocol::utils::SystemTimeProvider;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::quic::transport::QuinnAuthStream;
 use portredirect::{get_config_dir, ByteCount, PortRedirectProtocol};
-use rand::rngs::OsRng;
-use rand::RngCore;
-use secrecy::{ExposeSecret, SecretString};
-use sha2::{Digest, Sha256};
+use secrecy::SecretString;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
-use tracing::{debug, error, info, instrument, span, warn, Level};
+use tracing::{debug, error, info, instrument, span, Level};
 
 #[derive(Debug)]
 struct WorkerBundle {

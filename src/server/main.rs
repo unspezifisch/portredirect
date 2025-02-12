@@ -9,6 +9,10 @@ use portredirect::protocol::auth::server_authenticate;
 use portredirect::protocol::utils::SystemTimeProvider;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::quic::transport::QuinnAuthStream;
+use portredirect::server::auth::handle_quic_client_auth;
+use portredirect::server::client_handler::handle_quic_client_connection;
+use portredirect::server::tcp::handle_tcp_to_quic_stream;
+use portredirect::server::utils::QuinnWorkerBundle;
 use portredirect::{get_config_dir, ByteCount, PortRedirectProtocol};
 use secrecy::SecretString;
 use std::net::ToSocketAddrs;
@@ -19,12 +23,6 @@ use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, span, Level};
-
-#[derive(Debug)]
-struct QuinnWorkerBundle {
-    quic_recv: quinn::RecvStream,
-    quic_send: quinn::SendStream,
-}
 
 /// Command-line arguments for the port redirector tool.
 #[derive(Parser)]
@@ -214,182 +212,4 @@ async fn main() -> Result<()> {
             }
         });
     }
-}
-
-// Handles incoming TCP connections, forwards them to a QUIC stream.
-// TODO consolidate with client/main.rs
-#[allow(unused)]
-async fn handle_tcp_to_quic_stream(
-    mut tcp_stream: tokio::net::TcpStream,
-    mut bundle: QuinnWorkerBundle,
-) -> Result<()> {
-    let stream_id = bundle.quic_send.id();
-    let (mut tcp_read_half, mut tcp_write_half) = tcp_stream.into_split();
-
-    // Forward TCP -> QUIC
-    let tcp_to_quic: JoinHandle<Result<ByteCount>> = tokio::spawn(async move {
-        let mut byte_count = 0 as ByteCount;
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(bytes_read) = tcp_read_half.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            byte_count += bytes_read as ByteCount;
-            bundle.quic_send.write_all(&buf[..bytes_read]).await?;
-        }
-        bundle.quic_send.finish()?; // Signal end of stream
-        _ = bundle.quic_send.stopped().await; // Wait for the stream to be closed
-        Ok(byte_count)
-    });
-
-    // Forward QUIC -> TCP
-    let quic_to_tcp: JoinHandle<Result<ByteCount>> = tokio::spawn(async move {
-        let mut byte_count = 0 as ByteCount;
-        let mut buf = [0; PortRedirectProtocol::TCP_QUIC_FORWARDING_BUFFER_SIZE];
-        while let Ok(Some(bytes_read)) = bundle.quic_recv.read(&mut buf).await {
-            if bytes_read == 0 {
-                break; // End of stream
-            }
-            byte_count += bytes_read as ByteCount;
-            tcp_write_half.write_all(&buf[..bytes_read]).await?;
-        }
-        tcp_write_half.shutdown().await?;
-        Ok(byte_count)
-    });
-
-    // Wait for both directions to complete.
-    let result = tokio::try_join!(tcp_to_quic, quic_to_tcp);
-    match result {
-        Ok((Ok(quic_tx_bytes), Ok(quic_rx_bytes))) => {
-            info!(
-                "TCP to QUIC byte count: {:?}, QUIC to TCP byte count: {:?}, stream id {}",
-                quic_tx_bytes, quic_rx_bytes, stream_id
-            );
-        }
-        Ok((Err(e), _)) | Ok((_, Err(e))) => {
-            return Err(anyhow!(
-                "Error in one side of QUIC tunnel for TCP forwarding: {:?}, stream id {}",
-                e,
-                stream_id
-            ));
-        }
-        Err(e) => {
-            return Err(anyhow!(
-                "Join error in TCP forwarding: {:?}, stream id {}",
-                e,
-                stream_id
-            ));
-        }
-    }
-
-    debug!("Closed QUIC stream for TCP connection");
-    Ok(())
-}
-
-// Authenticates the PR QUIC client to us, the server.
-// Called by handle_quic_client_connection.
-#[instrument(skip(config, conn))]
-async fn handle_quic_client_auth(
-    config: Arc<ServerConfig<Arc<ServerAppData>>>,
-    conn: quinn::Connection,
-) -> Result<QuinnAuthStream> {
-    debug!("Authenticating PR QUIC client");
-
-    // An unknown client just connected, they need to authenticate or get kicked.
-    let (send, recv) = conn
-        .open_bi()
-        .await
-        .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
-    let mut stream = QuinnAuthStream::new(send, recv);
-    debug!("opened bidi channel for AUTH with stream id {}", stream);
-
-    match server_authenticate(
-        &mut stream,
-        config.app_data.connection_auth_psk.to_owned(),
-        &SystemTimeProvider,
-    )
-    .await
-    {
-        Ok(()) => {
-            info!("Authenticated PR QUIC client OK");
-        }
-        Err(e) => {
-            error!("Failed to authenticate PR QUIC client: {:?}", e);
-            return Err(e);
-        }
-    }
-
-    Ok(stream)
-}
-
-// Handles one PR QUIC client connection.
-// Called by run_quic_server.
-#[instrument(skip(config, conn))]
-async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<Arc<ServerAppData>>>,
-    conn: quinn::Connection,
-) -> Result<()> {
-    debug!(
-        "Handling potential PR QUIC client connection from {}",
-        conn.remote_address()
-    );
-
-    // First, ensure the client is authenticated.
-    let mut auth_stream =
-        handle_quic_client_auth(Arc::clone(&config), conn.clone())
-            .await
-            .with_context(|| {
-                format!(
-                    "failed to authenticate PR QUIC client from {}",
-                    conn.remote_address()
-                )
-            })?;
-
-    // TODO do the tasks still need this conn?
-    {
-        let mut quinn_conn = config.app_data.connection.lock().unwrap();
-        *quinn_conn = Some(conn);
-    }
-
-    // Keep AUTH channel open, we might add some stats transmission later.
-    let mut pong_count = 0usize;
-    loop {
-        sleep(PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL_SECONDS).await;
-
-        // ping the client
-        if let Err(e) = auth_stream.write_all(b"PING\n").await {
-            error!("Failed to send PING: {:?}", e);
-            break;
-        }
-        if let Err(e) = auth_stream.flush().await {
-            error!("Failed to flush PING: {:?}", e);
-            break;
-        }
-
-        // receive response from client
-        let mut response_buf = [0u8; 5];
-        match auth_stream.read(&mut response_buf).await {
-            Ok(n) => {
-                let response = std::str::from_utf8(&response_buf[..n])?;
-                if response == "PONG\n" {
-                    pong_count += 1;
-                    info!("Received PONG, count: {}", pong_count);
-                } else {
-                    error!("Unexpected response to PING: {:?}", response);
-                    break;
-                }
-            }
-            Err(e) => {
-                error!("Failed to read PONG: {:?}", e);
-                break;
-            }
-        }
-    }
-
-    {
-        let mut quinn_conn = config.app_data.connection.lock().unwrap();
-        *quinn_conn = None;
-    }
-
-    Ok(())
 }

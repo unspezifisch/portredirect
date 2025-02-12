@@ -1,4 +1,16 @@
-// PortRedirector Protocol Module
+// PortRedirect-RS Protocol Module
+//
+// The idea behind PRRS authentication is:
+// - The server is trusted by the client because it has the right public certificate matching our configuration file.
+// - The client is not trusted by the server because anyone can connect to the server and say that it speaks our protocol.
+// - The client proves its trustworthiness by sending a response to a challenge that only the client can answer using the PSK.
+// - Add a time component to the challenge to prevent replay attacks, by making the challenge expire after a certain time.
+// - Add a safe big random component to make the challenge not brute-forceable.
+// - Use a safe hash function. Note this may require that we need rate-limiting for clients that fail
+//   authentication to avoid getting DoS'ed by people trying to get us to compute a lot of big hashes.
+//
+// Implementation details:
+// - Make it kinda readable for debugging.
 //
 // License: GPL-3.0-only
 
@@ -7,11 +19,11 @@ use crate::protocol::utils::TimeProvider;
 use anyhow::{anyhow, Result};
 use secrecy::ExposeSecret;
 use secrecy::SecretString;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha512};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Maximum allowed length for the challenge message.
-const CHALLENGE_MAX_LEN: usize = 128;
+const CHALLENGE_MAX_LEN: usize = 256;
 
 /// Server-side authentication: send challenge, receive and verify the client’s response.
 pub async fn server_authenticate<S>(
@@ -42,12 +54,12 @@ where
     stream.flush().await?;
 
     // 3. Read client response.
-    let mut buf = vec![0u8; 65]; // 64 hex bytes + newline
+    let mut buf = vec![0u8; 129]; // 128 hex bytes + newline
     stream.read_exact(&mut buf).await?;
     let client_response = std::str::from_utf8(&buf)?.trim_end();
 
     // 4. Compute expected response.
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha512::new();
     hasher.update(challenge.as_bytes());
     hasher.update(psk.expose_secret());
     let expected_response = hex::encode(hasher.finalize());
@@ -84,7 +96,7 @@ where
         .ok_or_else(|| anyhow!("Missing challenge in authentication message"))?;
 
     // 2. Compute response.
-    let mut hasher = Sha256::new();
+    let mut hasher = Sha512::new();
     hasher.update(challenge.as_bytes());
     hasher.update(psk.expose_secret());
     let response = hex::encode(hasher.finalize()) + "\n";

@@ -1,4 +1,4 @@
-// PortRedirector Protocol Module
+// PortRedirect-RS Protocol Module
 //
 // License: GPL-3.0-only
 

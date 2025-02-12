@@ -1,4 +1,4 @@
-// PortRedirector-RS Client
+// PortRedirector-RS Client - PSK authentication
 //
 // License: GPL-3.0-only
 

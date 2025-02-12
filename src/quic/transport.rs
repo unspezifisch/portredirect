@@ -9,24 +9,24 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-pub struct QuinnAuthStream {
+pub struct GenericQuinnStream {
     pub send: SendStream,
     pub recv: RecvStream,
 }
 
-impl QuinnAuthStream {
+impl GenericQuinnStream {
     pub fn new(send: SendStream, recv: RecvStream) -> Self {
         Self { send, recv }
     }
 }
 
-impl Display for QuinnAuthStream {
+impl Display for GenericQuinnStream {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "QuinnAuthStream(send: {:?}, recv: {:?})", self.send, self.recv)
     }
 }
 
-impl AsyncWrite for QuinnAuthStream {
+impl AsyncWrite for GenericQuinnStream {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -63,7 +63,7 @@ impl AsyncWrite for QuinnAuthStream {
     }
 }
 
-impl AsyncRead for QuinnAuthStream {
+impl AsyncRead for GenericQuinnStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

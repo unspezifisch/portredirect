@@ -5,4 +5,3 @@
 pub mod auth;
 pub mod client_handler;
 pub mod tcp;
-pub mod utils;

@@ -6,9 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use portredirect::app_data::ServerAppData;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
+use portredirect::quic::transport::GenericQuicStream;
 use portredirect::server::client_handler::handle_quic_client_connection;
 use portredirect::server::tcp::handle_tcp_to_quic_stream;
-use portredirect::server::utils::QuinnWorkerBundle;
 use portredirect::get_config_dir;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -186,7 +186,7 @@ async fn handle_tcp_connections(
         let stream_id = quic_send.id();
         debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
-        let worker_bundle = QuinnWorkerBundle { quic_recv, quic_send };
+        let quic_stream = GenericQuicStream::new(quic_send, quic_recv);
         let connections = active_connections.clone();
 
         // Spawn a new task to handle forwarding between TCP and QUIC.
@@ -195,7 +195,7 @@ async fn handle_tcp_connections(
             connections.fetch_add(1, Ordering::SeqCst);
             let start_time = Instant::now();
 
-            if let Err(e) = handle_tcp_to_quic_stream(tcp_stream, worker_bundle).await {
+            if let Err(e) = handle_tcp_to_quic_stream(tcp_stream, quic_stream).await {
                 error!("Error handling TCP-to-QUIC stream (id {}): {:?}", stream_id, e);
             } else {
                 debug!("TCP-to-QUIC stream (id {}) completed", stream_id);

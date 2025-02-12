@@ -5,7 +5,7 @@
 use crate::client::auth::handle_quic_auth;
 use crate::client::tcp::handle_tcp_forwarding;
 use crate::quic::client::ClientConfig;
-use crate::{app_data::ClientAppData, quic::transport::GenericQuinnStream};
+use crate::{app_data::ClientAppData, quic::transport::GenericQuicStream};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -58,7 +58,7 @@ pub async fn handle_quic_server_connection(
     while let Ok((send, recv)) = conn.accept_bi().await {
         info!("Opened QUIC stream for new forwarded connection");
 
-        let quic_stream = GenericQuinnStream::new(send, recv);
+        let quic_stream = GenericQuicStream::new(send, recv);
 
         let config = Arc::clone(&config);
         tokio::spawn(async move {

@@ -6,7 +6,7 @@ use crate::app_data::ServerAppData;
 use crate::protocol::auth::server_authenticate;
 use crate::protocol::utils::SystemTimeProvider;
 use crate::quic::server::ServerConfig;
-use crate::quic::transport::GenericQuinnStream;
+use crate::quic::transport::GenericQuicStream;
 use anyhow::{anyhow, Result};
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument};
@@ -17,7 +17,7 @@ use tracing::{debug, error, info, instrument};
 pub async fn handle_quic_client_auth(
     config: Arc<ServerConfig<Arc<ServerAppData>>>,
     conn: quinn::Connection,
-) -> Result<GenericQuinnStream> {
+) -> Result<GenericQuicStream> {
     debug!("Authenticating PR QUIC client");
 
     // An unknown client just connected, they need to authenticate or get kicked.
@@ -25,7 +25,7 @@ pub async fn handle_quic_client_auth(
         .open_bi()
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
-    let mut stream = GenericQuinnStream::new(send, recv);
+    let mut stream = GenericQuicStream::new(send, recv);
     debug!("opened bidi channel for AUTH with stream id {}", stream);
 
     match server_authenticate(

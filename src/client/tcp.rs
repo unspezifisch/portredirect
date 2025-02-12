@@ -5,7 +5,7 @@
 use crate::app_data::ClientAppData;
 use crate::forward::forward_bidirectional;
 use crate::quic::client::ClientConfig;
-use crate::quic::transport::GenericQuinnStream;
+use crate::quic::transport::GenericQuicStream;
 use anyhow::{anyhow, Error, Result};
 use std::sync::Arc;
 use tracing::{debug, instrument};
@@ -14,7 +14,7 @@ use tracing::{debug, instrument};
 #[instrument[skip(config, quic_stream)]]
 pub async fn handle_tcp_forwarding(
     config: Arc<ClientConfig<ClientAppData>>,
-    mut quic_stream: GenericQuinnStream,
+    mut quic_stream: GenericQuicStream,
 ) -> Result<(), Error> {
     let mut tcp_stream =  // Create TCP connection to remote destination
         tokio::net::TcpStream::connect(&config.app_data.forward_destination)

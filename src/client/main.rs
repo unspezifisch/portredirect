@@ -325,6 +325,7 @@ async fn handle_quic_stream(
             quic_send.write_all(&buf[..bytes_read]).await?;
         }
         quic_send.finish()?; // Signal end of stream
+        _ = quic_send.stopped().await; // Wait for the stream to be closed
         Ok(())
     });
 

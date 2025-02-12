@@ -238,6 +238,7 @@ async fn handle_tcp_to_quic_stream(
             bundle.quic_send.write_all(&buf[..bytes_read]).await?;
         }
         bundle.quic_send.finish()?; // Signal end of stream
+        _ = bundle.quic_send.stopped().await; // Wait for the stream to be closed
         Ok(byte_count)
     });
 
@@ -252,6 +253,7 @@ async fn handle_tcp_to_quic_stream(
             byte_count += bytes_read as ByteCount;
             tcp_write_half.write_all(&buf[..bytes_read]).await?;
         }
+        tcp_write_half.shutdown().await?;
         Ok(byte_count)
     });
 

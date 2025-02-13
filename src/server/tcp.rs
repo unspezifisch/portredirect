@@ -3,6 +3,7 @@
 // License: GPL-3.0-only
 
 use crate::forward::forward_bidirectional;
+use crate::metrics_helper::DummyCounter;
 use crate::quic::transport::GenericQuicStream;
 use anyhow::Result;
 use tracing::{debug, instrument};
@@ -14,15 +15,19 @@ pub async fn handle_tcp_to_quic_stream(
     mut quic_stream: GenericQuicStream,
 ) -> Result<()> {
     // Render the display strings before calling forward_bidirectional.
-    let stream_id_tcp = format!("{}", tcp_stream.peer_addr()?);
     let stream_id_quic = format!("{}", quic_stream);
+
+    // HACK until the server gets metrics - Create dummy counters for both directions.
+    let dummy_counter_a = DummyCounter::new();
+    let dummy_counter_b = DummyCounter::new();
 
     // Now pass the strings. The mutable borrow of `quic_stream` is separate from the owned strings.
     forward_bidirectional(
         &mut tcp_stream,
         &mut quic_stream,
-        stream_id_tcp,
         stream_id_quic.clone(),
+        &dummy_counter_a,
+        &dummy_counter_b,
     )
     .await?;
 

@@ -5,11 +5,13 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use portredirect::app_data::ClientAppData;
+use portredirect::client::metrics::start_metrics_server;
 use portredirect::client::server_handler::handle_quic_server_connection;
-use portredirect::quic::client::{run_quic_client, ClientConfig};
 use portredirect::get_config_dir;
+use portredirect::quic::client::{run_quic_client, ClientConfig};
 use secrecy::SecretString;
 use std::net::ToSocketAddrs;
+use std::os::unix::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tracing::{info, span, Level};
 
@@ -39,6 +41,10 @@ struct Args {
     /// QUIC connection local port to bind to (client).
     #[clap(long, default_value = "0")]
     quic_local_port: u16,
+
+    /// Prometheus metrics host.
+    #[clap(long, default_value = "0")]
+    provide_metrics: bool,
 
     /// QUIC remote hostname override for Subject Alt Name match in TLS cert.
     #[clap(long)]
@@ -113,6 +119,11 @@ async fn main() -> Result<()> {
                 }
             }
         });
+    }
+
+    // Start the metrics server.
+    if args.provide_metrics {
+        tokio::spawn(async { start_metrics_server(([0, 0, 0, 0], 9898)).await });
     }
 
     // Create QUIC client.

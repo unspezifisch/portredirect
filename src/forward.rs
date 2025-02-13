@@ -8,38 +8,44 @@ use anyhow::{Context, Result};
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncWrite};
 use tracing::{info, warn};
 
+use crate::metrics_helper::MetricsCounter;
+
 /// Checks whether the error represents a graceful shutdown (error 0).
 fn is_graceful_shutdown<T: Error>(err: &T) -> bool {
     err.to_string().contains("error 0")
 }
 
-pub async fn forward_bidirectional<A, B, Ax, Bx>(
-    a: &mut A,
-    b: &mut B,
-    id_a: Ax,
-    id_b: Bx,
+pub async fn forward_bidirectional<StreamA, StreamB, StreamName, CounterA, CounterB>(
+    a: &mut StreamA,
+    b: &mut StreamB,
+    id: StreamName,
+    stream_a_counter: &CounterA,
+    stream_b_counter: &CounterB,
 ) -> Result<()>
 where
-    A: AsyncRead + AsyncWrite + Unpin,
-    B: AsyncRead + AsyncWrite + Unpin,
-    Ax: std::fmt::Display,
-    Bx: std::fmt::Display,
+    StreamA: AsyncRead + AsyncWrite + Unpin,
+    StreamB: AsyncRead + AsyncWrite + Unpin,
+    StreamName: std::fmt::Display,
+    CounterA: MetricsCounter,
+    CounterB: MetricsCounter,
 {
     let result = copy_bidirectional(a, b).await;
 
     match result {
-        Ok((n1, n2)) => {
+        Ok((bytes_a, bytes_b)) => {
+            stream_a_counter.inc_by(bytes_a);
+            stream_b_counter.inc_by(bytes_b);
             info!(
-                "Stream id (A={} B={}): forwarded {} bytes in A->B direction and {} bytes in B->A direction",
-                id_a, id_b, n1, n2
+                "Stream (id={}): forwarded {} bytes in A->B direction and {} bytes in B->A direction",
+                id, bytes_a, bytes_b
             );
             Ok(())
         }
         Err(err) => {
             if is_graceful_shutdown(&err) {
                 warn!(
-                    "Stream id (A={} B={}): bidirectional copy finished gracefully (error 0)",
-                    id_a, id_b
+                    "Stream (id={}): bidirectional copy finished gracefully (error 0)",
+                    id
                 );
                 Ok(())
             } else {
@@ -51,6 +57,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::metrics_helper::DummyCounter;
+
     use super::*;
     use anyhow::Result;
     use std::pin::Pin;
@@ -171,8 +179,19 @@ mod tests {
         // Stream B will "send" the bytes in "world" and expect to receive data from A.
         let mut stream_b = TestStream::new(b"world");
 
+        // Create dummy counters for both directions.
+        let dummy_counter_a = DummyCounter::new();
+        let dummy_counter_b = DummyCounter::new();
+
         // Run the forwarding function.
-        forward_bidirectional(&mut stream_a, &mut stream_b, "A", "B").await?;
+        forward_bidirectional(
+            &mut stream_a,
+            &mut stream_b,
+            "A",
+            &dummy_counter_a,
+            &dummy_counter_b,
+        )
+        .await?;
 
         // After bidirectional copy, stream_a should have received stream_b's data, and vice versa.
         assert_eq!(stream_a.write_data, b"world");
@@ -186,9 +205,19 @@ mod tests {
         let mut normal_stream = TestStream::new(b"data");
         let mut failing_stream = FailingStream;
 
+        // Create dummy counters for both directions.
+        let dummy_counter_a = DummyCounter::new();
+        let dummy_counter_b = DummyCounter::new();
+
         // One of the streams will immediately fail; our function should return an error with the proper context.
-        let result =
-            forward_bidirectional(&mut failing_stream, &mut normal_stream, "fail", "normal").await;
+        let result = forward_bidirectional(
+            &mut failing_stream,
+            &mut normal_stream,
+            "fail",
+            &dummy_counter_a,
+            &dummy_counter_b,
+        )
+        .await;
         assert!(result.is_err());
         let err_msg = format!("{:?}", result.err().unwrap());
         assert!(
@@ -249,13 +278,18 @@ mod tests {
         // Use the graceful stream for the other side.
         let mut graceful_stream = GracefulStream;
 
+        // Create dummy counters for both directions.
+        let dummy_counter_a = DummyCounter::new();
+        let dummy_counter_b = DummyCounter::new();
+
         // When one side produces an error containing "error 0", our forward_bidirectional
         // function should treat it as a graceful shutdown and return Ok(()).
         forward_bidirectional(
             &mut normal_stream,
             &mut graceful_stream,
             "normal",
-            "graceful",
+            &dummy_counter_a,
+            &dummy_counter_b,
         )
         .await?;
 

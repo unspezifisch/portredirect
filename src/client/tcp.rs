@@ -10,6 +10,8 @@ use anyhow::{anyhow, Error, Result};
 use std::sync::Arc;
 use tracing::{debug, instrument};
 
+use super::metrics::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
+
 // Handles individual QUIC streams.
 #[instrument[skip(config, quic_stream)]]
 pub async fn handle_tcp_forwarding(
@@ -24,7 +26,14 @@ pub async fn handle_tcp_forwarding(
     let stream_id = quic_stream.recv.id();
     debug!("Starting QUIC->TCP stream handler, stream id {}", stream_id);
 
-    forward_bidirectional(&mut tcp_stream, &mut quic_stream, stream_id, stream_id).await?;
+    forward_bidirectional(
+        &mut tcp_stream,
+        &mut quic_stream,
+        stream_id,
+        &BYTES_TRANSMITTED_A,
+        &BYTES_TRANSMITTED_B,
+    )
+    .await?;
 
     debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
     Ok(())

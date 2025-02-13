@@ -8,6 +8,7 @@ use std::{path::PathBuf, time::Duration};
 pub mod app_data;
 pub mod client;
 pub mod forward;
+pub mod metrics_helper; 
 pub mod protocol;
 pub mod quic;
 pub mod server;

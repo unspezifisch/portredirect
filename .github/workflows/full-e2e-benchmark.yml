@@ -29,6 +29,8 @@ jobs:
       - name: Show Log Files
         if: always()
         run: |
+          echo "========== metrics*.log =========="
+          cat metrics*.log || true
           echo "========== server.log =========="
           cat server.log || true
           echo "========== client.log =========="
@@ -45,3 +47,4 @@ jobs:
             server.log
             client.log
             iperf_server.log
+            metrics*.log

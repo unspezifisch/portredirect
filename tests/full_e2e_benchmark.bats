@@ -49,6 +49,7 @@ setup() {
     --destination-host 127.0.0.1 --destination-port 5201 \
     --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
     --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
+    --provide-metrics \
     >client.log 2>&1 &
   CLIENT_PID=$!
 
@@ -69,12 +70,17 @@ teardown() {
   [ "$status" -eq 0 ]
   run iperf3 -c 127.0.0.1 -p 5201 -R
   [ "$status" -eq 0 ]
+  run curl http://127.0.0.1:9898/metrics >metrics1.log
+  [ "$status" -eq 0 ]
 }
 
 @test "Tunneled iperf3 test (via portredirect)" {
   run iperf3 -c 127.0.0.1 -p 10001
   [ "$status" -eq 0 ]
   run iperf3 -c 127.0.0.1 -p 10001 -R
+  [ "$status" -eq 0 ]
+
+  run curl http://127.0.0.1:9898/metrics >metrics2.log
   [ "$status" -eq 0 ]
 
   # Check that no ERROR occurred in the portredirect logs
@@ -92,6 +98,9 @@ teardown() {
   run iperf3 -c 127.0.0.1 -p 10001 -P 20
   [ "$status" -eq 0 ]
   run iperf3 -c 127.0.0.1 -p 10001 -P 20 -R
+  [ "$status" -eq 0 ]
+
+  run curl http://127.0.0.1:9898/metrics >metrics3.log
   [ "$status" -eq 0 ]
 
   # Check that no ERROR occurred in the portredirect logs

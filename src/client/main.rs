@@ -42,7 +42,7 @@ struct Args {
     quic_local_port: u16,
 
     /// Prometheus metrics host.
-    #[clap(long, default_value = "0")]
+    #[clap(long)]
     provide_metrics: bool,
 
     /// QUIC remote hostname override for Subject Alt Name match in TLS cert.

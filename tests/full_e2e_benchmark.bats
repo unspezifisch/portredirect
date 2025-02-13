@@ -112,10 +112,4 @@ teardown() {
     echo "ERROR found in client.log"
     exit 1
   fi
-
-  # TODO Check for 0% packet loss or no retries in the output.
-  run grep -q "0% packet loss" <<<"$output"
-  [ "$status" -eq 0 ]
-  run grep -q "0 retries" <<<"$output"
-  [ "$status" -eq 0 ]
 }

@@ -13,8 +13,9 @@ use tracing::{debug, instrument};
 use super::metrics::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
 
 // Handles individual QUIC streams.
+// TODO resolve design differences vs. server/tcp_forwarder.rs
 #[instrument[skip(config, quic_stream)]]
-pub async fn handle_tcp_forwarding(
+pub async fn forward_tcp_to_quic_stream(
     config: Arc<ClientConfig<ClientAppData>>,
     mut quic_stream: GenericQuicStream,
 ) -> Result<(), Error> {

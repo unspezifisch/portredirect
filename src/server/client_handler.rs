@@ -5,11 +5,12 @@
 use crate::app_data::ServerAppData;
 use crate::protocol::keepalive::run_keepalive_server_loop;
 use crate::quic::server::ServerConfig;
+
+use super::auth::handle_quic_client_auth;
+
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tracing::{debug, instrument};
-
-use super::auth::handle_quic_client_auth;
 
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.

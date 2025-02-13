@@ -5,12 +5,13 @@
 use crate::forward::forward_bidirectional;
 use crate::metrics_helper::DummyCounter;
 use crate::quic::transport::GenericQuicStream;
+
 use anyhow::Result;
 use tracing::{debug, instrument};
 
 /// Handles an incoming TCP connection and forwards it to a QUIC stream.
 #[instrument(skip(tcp_stream, quic_stream))]
-pub async fn handle_tcp_to_quic_stream(
+pub async fn forward_tcp_to_quic_stream(
     mut tcp_stream: tokio::net::TcpStream,
     mut quic_stream: GenericQuicStream,
 ) -> Result<()> {

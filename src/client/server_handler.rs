@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
 use super::auth::handle_quic_auth_client_side;
-use super::tcp::handle_tcp_forwarding;
+use super::tcp::forward_tcp_to_quic_stream;
 
 /// Handles the connection to the QUIC server, authenticates and keeps it alive.
 /// Called directly by run_quic_client.
@@ -48,7 +48,7 @@ pub async fn handle_quic_server_connection(
         let quic_stream = GenericQuicStream::new(send, recv);
         let config = Arc::clone(&config);
         tokio::spawn(async move {
-            if let Err(e) = handle_tcp_forwarding(config, quic_stream).await {
+            if let Err(e) = forward_tcp_to_quic_stream(config, quic_stream).await {
                 TCP_FORWARDING_ERRORS.inc();
                 warn!("Error handling QUIC stream: {}", e);
             }

@@ -1,0 +1,85 @@
+// PortRedirector-RS Server - Listener for TCP connections
+//
+// License: GPL-3.0-only
+
+use crate::app_data::ServerAppData;
+use crate::quic::transport::GenericQuicStream;
+use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
+
+use anyhow::Result;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::net::TcpListener;
+use tracing::{debug, error, instrument};
+
+/// Accepts TCP connections and bridges them to QUIC.
+#[instrument(skip(listener, app_data))]
+pub async fn handle_tcp_listener(
+    listener: TcpListener,
+    app_data: Arc<ServerAppData>,
+    active_connections: Arc<AtomicUsize>,
+) -> Result<()> {
+    loop {
+        let (tcp_stream, peer_addr) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Failed to accept TCP connection: {}", e);
+                continue;
+            }
+        };
+        debug!("Accepted TCP connection from {:?}", peer_addr);
+
+        // Try to get the active QUIC connection.
+        let quic_conn = {
+            // Note: If the lock fails, the application will panic.
+            app_data.connection.lock().unwrap().clone()
+        };
+
+        let quic_conn = match quic_conn {
+            Some(conn) => conn,
+            None => {
+                error!("No active QUIC connection available to handle TCP traffic");
+                continue;
+            }
+        };
+
+        // Open a bidirectional QUIC stream.
+        let (quic_send, quic_recv) = match quic_conn.open_bi().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to open QUIC bidirectional stream: {}", e);
+                continue;
+            }
+        };
+        let stream_id = quic_send.id();
+        debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
+
+        let quic_stream = GenericQuicStream::new(quic_send, quic_recv);
+        let connections = active_connections.clone();
+
+        // Spawn a new task to handle forwarding between TCP and QUIC.
+        tokio::spawn(async move {
+            // Increment active connections.
+            connections.fetch_add(1, Ordering::SeqCst);
+            let start_time = Instant::now();
+
+            if let Err(e) = forward_tcp_to_quic_stream(tcp_stream, quic_stream).await {
+                error!(
+                    "Error handling TCP-to-QUIC stream (id {}): {:?}",
+                    stream_id, e
+                );
+            } else {
+                debug!("TCP-to-QUIC stream (id {}) completed", stream_id);
+            }
+
+            debug!(
+                "Stream (id {}) terminated after {:?}",
+                stream_id,
+                start_time.elapsed()
+            );
+            // Decrement active connections.
+            connections.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
+}

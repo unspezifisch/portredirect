@@ -11,7 +11,6 @@ use portredirect::get_config_dir;
 use portredirect::quic::client::{run_quic_client, ClientConfig};
 use secrecy::SecretString;
 use std::net::ToSocketAddrs;
-use std::os::unix::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tracing::{info, span, Level};
 

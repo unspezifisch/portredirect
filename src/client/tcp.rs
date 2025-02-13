@@ -30,8 +30,9 @@ pub async fn handle_tcp_forwarding(
         &mut tcp_stream,
         &mut quic_stream,
         stream_id,
-        &BYTES_TRANSMITTED_A,
-        &BYTES_TRANSMITTED_B,
+        // Force dereferencing here because the counter is a LazyStatic.
+        &*BYTES_TRANSMITTED_A,
+        &*BYTES_TRANSMITTED_B,
     )
     .await?;
 

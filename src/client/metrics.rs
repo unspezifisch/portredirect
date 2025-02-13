@@ -34,8 +34,14 @@ lazy_static::lazy_static! {
         register_int_counter!("server_connections_gracefully_closed_total", "Total number of times the server connection was closed cleanly").unwrap();
 }
 
-impl MetricsCounter for prometheus::IntCounter {
+impl MetricsCounter for IntCounter {
     fn inc_by(&self, amount: u64) {
-        self.inc_by(amount);
+        prometheus::IntCounter::inc_by(self, amount);
+    }
+}
+
+impl<T: MetricsCounter> MetricsCounter for &T {
+    fn inc_by(&self, amount: u64) {
+        (**self).inc_by(amount)
     }
 }

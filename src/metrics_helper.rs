@@ -5,7 +5,7 @@ pub trait MetricsCounter {
 }
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// A dummy counter for testing purposes.
+/// A dummy counter for testing purposes or cases where we want to read the result directly.
 #[derive(Default)]
 pub struct DummyCounter(AtomicU64);
 
@@ -24,3 +24,4 @@ impl MetricsCounter for DummyCounter {
         self.0.fetch_add(amount, Ordering::Relaxed);
     }
 }
+

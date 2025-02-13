@@ -19,8 +19,8 @@ pub async fn forward_bidirectional<StreamA, StreamB, StreamName, CounterA, Count
     a: &mut StreamA,
     b: &mut StreamB,
     id: StreamName,
-    stream_a_counter: &CounterA,
-    stream_b_counter: &CounterB,
+    stream_a_counter: CounterA,
+    stream_b_counter: CounterB,
 ) -> Result<()>
 where
     StreamA: AsyncRead + AsyncWrite + Unpin,

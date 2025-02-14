@@ -1,0 +1,286 @@
+digraph {
+
+    graph [
+        label="portredirect_server",
+        labelloc=t,
+
+        pad=0.4,
+
+        // Consider rendering the graph using a different layout algorithm, such as:
+        // [dot, neato, twopi, circo, fdp, sfdp]
+        layout=neato,
+        overlap=false,
+        splines="line",
+        rankdir=LR,
+
+        fontname="Helvetica", 
+        fontsize="36",
+    ];
+
+    node [
+        fontname="monospace",
+        fontsize="10",
+        shape="record",
+        style="filled",
+    ];
+
+    edge [
+        fontname="monospace",
+        fontsize="10",
+    ];
+
+    "alloc::string::String" [label="external struct|alloc::string::String", fillcolor="#81c169"]; // "struct" node
+    "alloc::sync::Arc" [label="external struct|alloc::sync::Arc", fillcolor="#81c169"]; // "struct" node
+    "alloc::vec::into_iter::IntoIter" [label="external struct|alloc::vec::into_iter::IntoIter", fillcolor="#81c169"]; // "struct" node
+    "anyhow::Context" [label="external trait|anyhow::Context", fillcolor="#81c169"]; // "trait" node
+    "anyhow::Error" [label="external struct|anyhow::Error", fillcolor="#81c169"]; // "struct" node
+    "anyhow::Result" [label="external type|anyhow::Result", fillcolor="#81c169"]; // "type" node
+    "bool" [label="external builtin|bool", fillcolor="#81c169"]; // "builtin" node
+    "char" [label="external builtin|char", fillcolor="#81c169"]; // "builtin" node
+    "clap_builder::derive::Parser" [label="external trait|clap_builder::derive::Parser", fillcolor="#81c169"]; // "trait" node
+    "core::convert::Infallible" [label="external enum|core::convert::Infallible", fillcolor="#81c169"]; // "enum" node
+    "core::fmt::Arguments" [label="external struct|core::fmt::Arguments", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::Error" [label="external struct|core::fmt::Error", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::Formatter" [label="external struct|core::fmt::Formatter", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::builders::DebugStruct" [label="external struct|core::fmt::builders::DebugStruct", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::rt::Alignment" [label="external enum|core::fmt::rt::Alignment", fillcolor="#81c169"]; // "enum" node
+    "core::fmt::rt::Argument" [label="external struct|core::fmt::rt::Argument", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::rt::Count" [label="external enum|core::fmt::rt::Count", fillcolor="#81c169"]; // "enum" node
+    "core::fmt::rt::Placeholder" [label="external struct|core::fmt::rt::Placeholder", fillcolor="#81c169"]; // "struct" node
+    "core::fmt::rt::UnsafeArg" [label="external struct|core::fmt::rt::UnsafeArg", fillcolor="#81c169"]; // "struct" node
+    "core::future::future::Future" [label="external trait|core::future::future::Future", fillcolor="#81c169"]; // "trait" node
+    "core::marker::Sized" [label="external trait|core::marker::Sized", fillcolor="#81c169"]; // "trait" node
+    "core::net::socket_addr::SocketAddr" [label="external enum|core::net::socket_addr::SocketAddr", fillcolor="#81c169"]; // "enum" node
+    "core::ops::control_flow::ControlFlow" [label="external enum|core::ops::control_flow::ControlFlow", fillcolor="#81c169"]; // "enum" node
+    "core::option::Option" [label="external enum|core::option::Option", fillcolor="#81c169"]; // "enum" node
+    "core::result::Result" [label="external enum|core::result::Result", fillcolor="#81c169"]; // "enum" node
+    "core::sync::atomic::AtomicUsize" [label="external struct|core::sync::atomic::AtomicUsize", fillcolor="#81c169"]; // "struct" node
+    "core::sync::atomic::Ordering" [label="external enum|core::sync::atomic::Ordering", fillcolor="#81c169"]; // "enum" node
+    "core::time::Duration" [label="external struct|core::time::Duration", fillcolor="#81c169"]; // "struct" node
+    "log::Level" [label="external enum|log::Level", fillcolor="#81c169"]; // "enum" node
+    "log::LevelFilter" [label="external enum|log::LevelFilter", fillcolor="#81c169"]; // "enum" node
+    "log::Metadata" [label="external struct|log::Metadata", fillcolor="#81c169"]; // "struct" node
+    "log::MetadataBuilder" [label="external struct|log::MetadataBuilder", fillcolor="#81c169"]; // "struct" node
+    "portredirect::app_data::ServerAppData" [label="external struct|portredirect::app_data::ServerAppData", fillcolor="#81c169"]; // "struct" node
+    "portredirect::get_config_dir" [label="external fn|portredirect::get_config_dir", fillcolor="#81c169"]; // "fn" node
+    "portredirect::quic::server::ServerConfig" [label="external struct|portredirect::quic::server::ServerConfig", fillcolor="#81c169"]; // "struct" node
+    "portredirect::quic::server::run_quic_server" [label="external async fn|portredirect::quic::server::run_quic_server", fillcolor="#81c169"]; // "async fn" node
+    "portredirect::server::client_handler::handle_quic_client_connection" [label="external async fn|portredirect::server::client_handler::handle_quic_client_connection", fillcolor="#81c169"]; // "async fn" node
+    "portredirect::server::tcp_listener::handle_tcp_listener" [label="external async fn|portredirect::server::tcp_listener::handle_tcp_listener", fillcolor="#81c169"]; // "async fn" node
+    "portredirect_server" [label="crate|portredirect_server", fillcolor="#5397c8"]; // "crate" node
+    "portredirect_server::Args" [label="pub(crate) struct|portredirect_server::Args", fillcolor="#f8c04c"]; // "struct" node
+    "portredirect_server::Args::fmt" [label="pub(crate) fn|portredirect_server::Args::fmt", fillcolor="#f8c04c"]; // "fn" node
+    "portredirect_server::main" [label="pub(crate) async fn|portredirect_server::main", fillcolor="#f8c04c"]; // "async fn" node
+    "portredirect_server::report_active_connections" [label="pub(crate) async fn|portredirect_server::report_active_connections", fillcolor="#f8c04c"]; // "async fn" node
+    "portredirect_server::resolve_socket_addr" [label="pub(crate) fn|portredirect_server::resolve_socket_addr", fillcolor="#f8c04c"]; // "fn" node
+    "portredirect_server::run_quic_server_task" [label="pub(crate) async fn|portredirect_server::run_quic_server_task", fillcolor="#f8c04c"]; // "async fn" node
+    "portredirect_server::setup_tracing" [label="pub(crate) fn|portredirect_server::setup_tracing", fillcolor="#f8c04c"]; // "fn" node
+    "rustls::crypto::CryptoProvider" [label="external struct|rustls::crypto::CryptoProvider", fillcolor="#81c169"]; // "struct" node
+    "secrecy::SecretBox" [label="external struct|secrecy::SecretBox", fillcolor="#81c169"]; // "struct" node
+    "secrecy::SecretString" [label="external type|secrecy::SecretString", fillcolor="#81c169"]; // "type" node
+    "std::io::error::Error" [label="external struct|std::io::error::Error", fillcolor="#81c169"]; // "struct" node
+    "std::io::stdio::Stdout" [label="external struct|std::io::stdio::Stdout", fillcolor="#81c169"]; // "struct" node
+    "std::net::socket_addr::ToSocketAddrs" [label="external trait|std::net::socket_addr::ToSocketAddrs", fillcolor="#81c169"]; // "trait" node
+    "std::path::PathBuf" [label="external struct|std::path::PathBuf", fillcolor="#81c169"]; // "struct" node
+    "str" [label="external builtin|str", fillcolor="#81c169"]; // "builtin" node
+    "tokio::time::sleep::Sleep" [label="external struct|tokio::time::sleep::Sleep", fillcolor="#81c169"]; // "struct" node
+    "tokio::time::sleep::sleep" [label="external fn|tokio::time::sleep::sleep", fillcolor="#81c169"]; // "fn" node
+    "tracing::instrument" [label="external mod|tracing::instrument", fillcolor="#81c169"]; // "mod" node
+    "tracing::span" [label="external mod|tracing::span", fillcolor="#81c169"]; // "mod" node
+    "tracing::span::EnteredSpan" [label="external struct|tracing::span::EnteredSpan", fillcolor="#81c169"]; // "struct" node
+    "tracing::span::Span" [label="external struct|tracing::span::Span", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::callsite::DefaultCallsite" [label="external struct|tracing_core::callsite::DefaultCallsite", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::field::DisplayValue" [label="external struct|tracing_core::field::DisplayValue", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::field::Field" [label="external struct|tracing_core::field::Field", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::field::FieldSet" [label="external struct|tracing_core::field::FieldSet", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::field::Iter" [label="external struct|tracing_core::field::Iter", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::field::ValueSet" [label="external struct|tracing_core::field::ValueSet", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::metadata::Level" [label="external struct|tracing_core::metadata::Level", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::metadata::LevelFilter" [label="external struct|tracing_core::metadata::LevelFilter", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::metadata::Metadata" [label="external struct|tracing_core::metadata::Metadata", fillcolor="#81c169"]; // "struct" node
+    "tracing_core::subscriber::Interest" [label="external struct|tracing_core::subscriber::Interest", fillcolor="#81c169"]; // "struct" node
+    "tracing_subscriber::fmt::SubscriberBuilder" [label="external struct|tracing_subscriber::fmt::SubscriberBuilder", fillcolor="#81c169"]; // "struct" node
+    "tracing_subscriber::fmt::format::DefaultFields" [label="external struct|tracing_subscriber::fmt::format::DefaultFields", fillcolor="#81c169"]; // "struct" node
+    "tracing_subscriber::fmt::format::Format" [label="external struct|tracing_subscriber::fmt::format::Format", fillcolor="#81c169"]; // "struct" node
+    "tracing_subscriber::fmt::format::Full" [label="external struct|tracing_subscriber::fmt::format::Full", fillcolor="#81c169"]; // "struct" node
+    "tracing_subscriber::fmt::time::SystemTime" [label="external struct|tracing_subscriber::fmt::time::SystemTime", fillcolor="#81c169"]; // "struct" node
+    "u16" [label="external builtin|u16", fillcolor="#81c169"]; // "builtin" node
+    "u32" [label="external builtin|u32", fillcolor="#81c169"]; // "builtin" node
+    "u64" [label="external builtin|u64", fillcolor="#81c169"]; // "builtin" node
+    "usize" [label="external builtin|usize", fillcolor="#81c169"]; // "builtin" node
+
+    "portredirect_server" -> "alloc::sync::Arc" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "anyhow::Context" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "anyhow::Result" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "clap_builder::derive::Parser" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "core::net::socket_addr::SocketAddr" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "core::sync::atomic::AtomicUsize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "core::sync::atomic::Ordering" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "core::time::Duration" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::app_data::ServerAppData" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::get_config_dir" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::quic::server::ServerConfig" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::quic::server::run_quic_server" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::server::client_handler::handle_quic_client_connection" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect::server::tcp_listener::handle_tcp_listener" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "portredirect_server::Args" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "portredirect_server::main" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "portredirect_server::report_active_connections" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "portredirect_server::resolve_socket_addr" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "portredirect_server::run_quic_server_task" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "portredirect_server::setup_tracing" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server" -> "secrecy::SecretString" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "std::net::socket_addr::ToSocketAddrs" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "tokio::time::sleep::sleep" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "tracing::instrument" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "tracing::span" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server" -> "tracing_core::metadata::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args" -> "alloc::string::String" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args" -> "portredirect_server::Args::fmt" [label="owns", color="#000000", style="solid"] [constraint=true]; // "owns" edge
+    "portredirect_server::Args" -> "secrecy::SecretBox" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "alloc::string::String" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "core::fmt::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "core::fmt::Formatter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "core::fmt::builders::DebugStruct" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "core::result::Result" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "portredirect_server::Args" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "secrecy::SecretBox" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "str" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::Args::fmt" -> "u16" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "alloc::string::String" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "alloc::sync::Arc" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "anyhow::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "bool" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "char" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::convert::Infallible" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::Arguments" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::rt::Alignment" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::rt::Argument" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::rt::Count" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::rt::Placeholder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::fmt::rt::UnsafeArg" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::future::future::Future" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::marker::Sized" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::net::socket_addr::SocketAddr" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::ops::control_flow::ControlFlow" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::result::Result" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "core::sync::atomic::AtomicUsize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "log::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "log::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "log::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "log::MetadataBuilder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "portredirect::app_data::ServerAppData" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "portredirect::quic::server::ServerConfig" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "rustls::crypto::CryptoProvider" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "secrecy::SecretBox" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "std::io::error::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "std::path::PathBuf" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "str" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing::span::EnteredSpan" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing::span::Span" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::callsite::DefaultCallsite" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::field::Field" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::field::FieldSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::field::Iter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::field::ValueSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::metadata::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::metadata::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::metadata::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "tracing_core::subscriber::Interest" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "u32" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::main" -> "usize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "alloc::sync::Arc" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "bool" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "char" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::Arguments" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::rt::Alignment" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::rt::Argument" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::rt::Count" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::rt::Placeholder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::fmt::rt::UnsafeArg" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::future::future::Future" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::marker::Sized" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::sync::atomic::AtomicUsize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::sync::atomic::Ordering" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "core::time::Duration" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "log::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "log::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "log::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "log::MetadataBuilder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "str" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tokio::time::sleep::Sleep" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::callsite::DefaultCallsite" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::field::Field" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::field::FieldSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::field::Iter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::field::ValueSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::metadata::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::metadata::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::metadata::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "tracing_core::subscriber::Interest" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "u32" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "u64" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::report_active_connections" -> "usize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "alloc::string::String" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "alloc::vec::into_iter::IntoIter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "anyhow::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "char" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::convert::Infallible" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::Arguments" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::rt::Alignment" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::rt::Argument" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::rt::Count" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::rt::Placeholder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::fmt::rt::UnsafeArg" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::net::socket_addr::SocketAddr" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::ops::control_flow::ControlFlow" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "core::result::Result" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "std::io::error::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "str" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "u32" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::resolve_socket_addr" -> "usize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "alloc::sync::Arc" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "anyhow::Error" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "bool" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::fmt::Arguments" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::fmt::rt::Argument" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::fmt::rt::Placeholder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::fmt::rt::UnsafeArg" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::future::future::Future" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::marker::Sized" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::option::Option" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "core::result::Result" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "log::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "log::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "log::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "log::MetadataBuilder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "portredirect::app_data::ServerAppData" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "portredirect::quic::server::ServerConfig" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "str" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::callsite::DefaultCallsite" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::field::DisplayValue" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::field::Field" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::field::FieldSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::field::Iter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::field::ValueSet" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::metadata::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::metadata::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::metadata::Metadata" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "tracing_core::subscriber::Interest" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::run_quic_server_task" -> "usize" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "bool" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "std::io::stdio::Stdout" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_core::metadata::Level" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_core::metadata::LevelFilter" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_subscriber::fmt::SubscriberBuilder" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_subscriber::fmt::format::DefaultFields" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_subscriber::fmt::format::Format" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_subscriber::fmt::format::Full" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+    "portredirect_server::setup_tracing" -> "tracing_subscriber::fmt::time::SystemTime" [label="uses", color="#7f7f7f", style="dashed"] [constraint=false]; // "uses" edge
+
+}

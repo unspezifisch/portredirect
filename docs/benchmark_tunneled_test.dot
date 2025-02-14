@@ -1,0 +1,15 @@
+digraph tunneled_test {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  
+  iperf3_client [label="iperf3 Client\n(connects to port 10001)"];
+  portredirect_server [label="portredirect_server\n(127.0.0.1:10001)"];
+  quic_tunnel [label="QUIC Tunnel\n(port 4433)"];
+  portredirect_client [label="portredirect_client\n(QUIC connection to port 4433)"];
+  iperf3_server [label="iperf3 Server\n(listening on port 5201)"];
+  
+  iperf3_client -> portredirect_server [label="TCP"];
+  portredirect_server -> quic_tunnel [label="Encapsulates TCP in QUIC"];
+  quic_tunnel -> portredirect_client [label="QUIC"];
+  portredirect_client -> iperf3_server [label="TCP"];
+}

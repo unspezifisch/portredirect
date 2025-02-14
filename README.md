@@ -1,20 +1,42 @@
-# PortRedirect-RS
+# PortRedirect
 
 *Glue your frontend to the backend!*
 
-PortRedirect-RS (PRRS) is split into **server** and **client** sides.
+## Introduction
 
-**Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol.
+PortRedirect is split into **server** and **client** sides.
+
+### **Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol
 
 *In short:* Accepts incoming TCP connections and forwards them over a QUIC connection.
 
-**Client:** Redirects incoming server-initiated QUIC streams (multiple streams inside one connection) to a *destination* TCP host and port (e.g., `localhost:4433`, where an HTTPS server might be running). It acts as a QUIC client by initiating the connection to the QUIC server.
+### **Client:** Redirects incoming server-initiated QUIC streams (multiple streams inside one connection) to a *destination* TCP host and port (e.g., `localhost:4433`, where an HTTPS server might be running). It acts as a QUIC client by initiating the connection to the QUIC server
 
 *In short:* Connects to the QUIC server and relays the tunneled streams to a designated destination.
 
-Bling:
+### **Bling:**
 
 [![codecov](https://codecov.io/gh/unspezifisch/portredirect-rs/graph/badge.svg?token=TJSQNU6NMR)](https://codecov.io/gh/unspezifisch/portredirect-rs)
+
+### **Concept:**
+
+Let us sneakily introduce show you how this tunneling tool works, while describing essentially one of our CI tests.
+
+Imagine running a web server such as nginx for HTTPS traffic—but instead, we use an iperf3 server to benchmark connection performance. In real-world scenarios, many clients can connect to a server in parallel, and all traffic must be reliably forwarded. In our CI tests, we compare two configurations: a baseline direct connection and a tunneled connection using PortRedirect-RS.
+
+Below, **Figure 1** illustrates the baseline scenario where the iperf3 client connects directly to the iperf3 server over a standard TCP connection. This setup serves as our control measurement.
+
+#### Figure 1: Baseline (Direct) Connection
+
+![Baseline Connection Diagram](docs/benchmark_baseline_test.png)
+*This diagram shows a direct TCP connection between the iperf3 client and server.*
+
+In contrast, **Figure 2** demonstrates how PortRedirect-RS facilitates a tunneled connection. Here, the iperf3 client connects to an intermediate port monitored by the portredirect_server. The server encapsulates the TCP traffic in a persistent QUIC tunnel, which is then received by the portredirect_client and forwarded to the iperf3 server. This configuration simulates a scenario where services are hidden behind a secure tunnel, yet performance remains robust.
+
+#### Figure 2: Tunneled Connection via PortRedirect
+
+![Tunneled Connection Diagram](docs/benchmark_tunneled_test.png)
+*This diagram illustrates how traffic is encapsulated in a QUIC tunnel by the portredirect_server and forwarded by the portredirect_client to the iperf3 server.*
 
 ## Installation
 

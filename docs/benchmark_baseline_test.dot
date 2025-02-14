@@ -1,0 +1,9 @@
+digraph baseline_test {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  
+  iperf3_client [label="iperf3 Client\n(connects to port 5201)"];
+  iperf3_server [label="iperf3 Server\n(listening on port 5201)"];
+  
+  iperf3_client -> iperf3_server [label="TCP Connection"];
+}

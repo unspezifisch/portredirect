@@ -68,6 +68,9 @@ portredirect_client \
 - **`--quic-remote-hostname-match`:** Ensures the TLS certificate of the QUIC server matches the expected hostname.
 - **`--quic-psk`:** Must match the server’s pre-shared key.
 
+> **Important:** The client needs to verify the identity of the QUIC server using its certificate. On startup, both the server and client generate their own certificates if they do not already exist. These certificates are stored as `.der` files in the `~/.config/portredirect` directory.
+> **Action Required:** Start the server first to generate its certificate, then copy the contents of the server’s `~/.config/portredirect` directory to the corresponding location on the client machine. A Trust-On-First-Use (TOFU) mechanism may be implemented in the future to streamline this process.
+
 ### Security Notice: PSK Best Practices
 
 For secure operation, **always use a long and random pre-shared key (PSK)**.
@@ -86,6 +89,21 @@ For secure operation, **always use a long and random pre-shared key (PSK)**.
   ```
 
 Ensure that the PSK you use for both the server and client matches exactly.
+
+## Authentication & Certificate Verification
+
+PortRedirect-RS employs an authentication mechanism to ensure secure communication over the QUIC tunnel. Although the QUIC port is typically publicly reachable via the Internet, the recommended deployment (as shown in the examples) is behind a VPN for enhanced security.
+
+The main ideas are:
+
+- **Server Trust:**  
+  The client trusts the server because the server presents a public certificate that matches the expected configuration. This certificate is generated on the first run (if not already present) and stored in `~/.config/portredirect` as a `.der` file.
+
+- **Client Authentication:**  
+  The server, on the other hand, does not inherently trust the client. Anyone can connect and claim to speak the PortRedirect-RS protocol. Therefore, the client must prove its trustworthiness by responding to a server-issued challenge.
+
+- **Challenge-Response Mechanism:**  
+  The client must respond to a challenge that only it can correctly answer using the pre-shared key (PSK). The use of a PSK is favored for its simplicity and to avoid the need for exchanging certificates back *and forth*, which could become increasingly cumbersome with multiple clients.
 
 ## Running Tests
 

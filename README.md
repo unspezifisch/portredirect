@@ -2,9 +2,11 @@
 
 *Glue your frontend to the backend!*
 
+![Enhanced PortRedirect Logo showing a green pipe with the text superimposed with golden color](./docs/portredirect_logo.png)
+
 ## Intro
 
-PortRedirect is split into **server** and **client** sides.
+PortRedirect is basically a user space TCP forwarding solution. It is split into **server** and **client** sides.
 
 **Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol
 

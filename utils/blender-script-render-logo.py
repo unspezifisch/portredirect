@@ -8,7 +8,7 @@ def cleanup_scene():
 
 def setup_random_seed(seed=42):
     random.seed(seed)
-    
+
 def create_background_pipes():
     for i in range(20):
         # Define parameters for the outer pipe
@@ -17,73 +17,114 @@ def create_background_pipes():
         x = random.uniform(-8, 8)
         y = random.uniform(13, 17)  # placed in the distance
         z = random.uniform(-20, -10)
-        
+
         # Create the outer cylinder
         bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=depth, location=(x, y, z))
         outer_pipe = bpy.context.object
         outer_pipe.name = f"DimPipe_{i}"
-        
+
         # Create an inner cylinder to hollow out the pipe
         inner_radius = radius - 0.15  # slightly smaller than the outer radius
         inner_depth = depth + 0.2    # slightly taller for a clean subtraction
         bpy.ops.mesh.primitive_cylinder_add(radius=inner_radius, depth=inner_depth, location=(x, y, z))
         inner_pipe = bpy.context.object
         inner_pipe.name = f"DimPipeInner_{i}"
-        
+
         # Apply a Boolean difference modifier to subtract the inner from the outer
         bool_mod = outer_pipe.modifiers.new(name="PipeHole", type='BOOLEAN')
         bool_mod.operation = 'DIFFERENCE'
         bool_mod.object = inner_pipe
         bpy.context.view_layer.objects.active = outer_pipe
         bpy.ops.object.modifier_apply(modifier=bool_mod.name)
-        
+
         # Delete the inner cylinder
         bpy.data.objects.remove(inner_pipe, do_unlink=True)
-        
+
         # Assign a dim, off-color material to the now-hollow outer pipe
         dim_mat = bpy.data.materials.new(name=f"DimPipeMat_{i}")
         dim_mat.use_nodes = True
         dnodes = dim_mat.node_tree.nodes
         dprincipled = dnodes.get("Principled BSDF")
-        dprincipled.inputs['Base Color'].default_value = (0.1, 0.1, 0.15, 1)  # dark, off-color blue/grey
+        dprincipled.inputs["Base Color"].default_value = (
+            0.2,
+            0.2,
+            0.3,
+            1,
+        )  # dark, off-color blue/grey
         dprincipled.inputs['Metallic'].default_value = 0.2
         dprincipled.inputs['Roughness'].default_value = 0.8
         outer_pipe.data.materials.append(dim_mat)
-        
+
 def create_clouds():
-    for i in range(10):
-        x = random.uniform(-20, 20)
-        y = random.uniform(20, 50)
-        z = random.uniform(-30, -20)
-        bpy.ops.mesh.primitive_circle_add(vertices=32, radius=1, fill_type='NGON', location=(x, y, z))
-        cloud = bpy.context.object
-        # Increase the thickness in the Z direction for better visibility
-        scale_x = random.uniform(2.0, 3.0)
-        scale_y = random.uniform(1.0, 1.5)
-        scale_z = random.uniform(0.3, 0.5)  # increased from 0.1
-        cloud.scale = (scale_x, scale_y, scale_z)
-        cloud.name = f"Cloud_{i}"
-        
-        # Assign a simple cloud material (optional: add emission or slight transparency)
-        cloud_mat = bpy.data.materials.new(name=f"CloudMaterial_{i}")
-        cloud_mat.use_nodes = True
-        c_nodes = cloud_mat.node_tree.nodes
-        c_principled = c_nodes.get("Principled BSDF")
-        c_principled.inputs['Base Color'].default_value = (0.9, 0.9, 0.9, 1)
-        c_principled.inputs['Roughness'].default_value = 1.0
-        # Optional: mix in an Emission shader to brighten the clouds
-        emission = c_nodes.new(type='ShaderNodeEmission')
-        emission.inputs['Color'].default_value = (1, 1, 1, 1)
-        emission.inputs['Strength'].default_value = 0.2
-        mix_shader = c_nodes.new(type='ShaderNodeMixShader')
-        links = cloud_mat.node_tree.links
-        links.new(c_principled.outputs['BSDF'], mix_shader.inputs[1])
-        links.new(emission.outputs['Emission'], mix_shader.inputs[2])
-        mix_shader.inputs['Fac'].default_value = 0.3
-        output = c_nodes.get("Material Output")
-        links.new(mix_shader.outputs['Shader'], output.inputs['Surface'])
-        
-        cloud.data.materials.append(cloud_mat)
+    for i in range(13):
+        # Base position for the cloud
+        base_x = random.uniform(-20, 20)
+        base_y = random.uniform(10, 50)
+        base_z = random.uniform(-30, -20)
+
+        # Determine how many ellipses (parts) will form this cloud
+        num_parts = random.randint(1, 3)
+        cloud_parts = []
+
+        for j in range(num_parts):
+            # Random offset for each ellipse relative to the base position
+            offset_x = random.uniform(-1.0, 1.0)
+            offset_y = random.uniform(-1.0, 1.0)
+            offset_z = random.uniform(-0.2, 0.2)  # slight variation in depth
+
+            pos_x = base_x + offset_x
+            pos_y = base_y + offset_y
+            pos_z = base_z + offset_z
+
+            # Create a filled ellipse (disk)
+            bpy.ops.mesh.primitive_circle_add(
+                vertices=32, radius=1, fill_type="NGON", location=(pos_x, pos_y, pos_z)
+            )
+            ellipse = bpy.context.object
+            ellipse.name = f"Cloud_{i}_{j}"
+
+            # Apply random scaling for the ellipse shape
+            scale_x = random.uniform(2.0, 3.0)
+            scale_y = random.uniform(1.0, 1.5)
+            scale_z = random.uniform(0.3, 0.5)
+            ellipse.scale = (scale_x, scale_y, scale_z)
+
+            # Optionally, add a slight random rotation around Z for variation
+            ellipse.rotation_euler[2] = random.uniform(0, 6.28319)
+
+            # Create and assign a simple cloud material with a mix of Principled and Emission shaders
+            cloud_mat = bpy.data.materials.new(name=f"CloudMaterial_{i}_{j}")
+            cloud_mat.use_nodes = True
+            c_nodes = cloud_mat.node_tree.nodes
+            c_principled = c_nodes.get("Principled BSDF")
+            c_principled.inputs["Base Color"].default_value = (0.9, 0.9, 0.9, 1)
+            c_principled.inputs["Roughness"].default_value = 1.0
+
+            # Create an Emission node for a subtle glow
+            emission = c_nodes.new(type="ShaderNodeEmission")
+            emission.inputs["Color"].default_value = (1, 1, 1, 1)
+            emission.inputs["Strength"].default_value = 0.2
+
+            # Mix the two shaders
+            mix_shader = c_nodes.new(type="ShaderNodeMixShader")
+            links = cloud_mat.node_tree.links
+            links.new(c_principled.outputs["BSDF"], mix_shader.inputs[1])
+            links.new(emission.outputs["Emission"], mix_shader.inputs[2])
+            mix_shader.inputs["Fac"].default_value = 0.3
+
+            output = c_nodes.get("Material Output")
+            links.new(mix_shader.outputs["Shader"], output.inputs["Surface"])
+
+            ellipse.data.materials.append(cloud_mat)
+            cloud_parts.append(ellipse)
+
+        # Optionally join the parts so each cloud is a single object
+        if len(cloud_parts) > 1:
+            bpy.context.view_layer.objects.active = cloud_parts[0]
+            for obj in cloud_parts:
+                obj.select_set(True)
+            bpy.ops.object.join()
+            cloud_parts[0].name = f"Cloud_{i}"
 
 def create_hollow_pipe():
     # Create outer cylinder
@@ -174,13 +215,13 @@ def setup_lighting():
     # Create an Area Light with increased energy
     bpy.ops.object.light_add(type='AREA', location=(0, 0, 10))
     light_area = bpy.context.object
-    light_area.data.energy = 2000
-    light_area.data.size = 10
-    
+    light_area.data.energy = 1000
+    light_area.data.size = 100
+
     # Create a Point Light with increased energy
     bpy.ops.object.light_add(type='POINT', location=(-5, -7, 10))
     light_point = bpy.context.object
-    light_point.data.energy = 8000
+    light_point.data.energy = 5000
 
 def setup_camera():
     bpy.ops.object.camera_add(location=(0, -10, 10))
@@ -198,20 +239,28 @@ def setup_world_background():
     bg_node = world.node_tree.nodes.get("Background")
     if bg_node:
         # Slightly darker Mario Blue (hex #2D70B3 => (0.18, 0.44, 0.70, 1))
-        #bg_node.inputs[0].default_value = (0.18, 0.44, 0.70, 1)
-        # Change to a lighter, cyan-like blue (e.g., hex equivalent of a bright cyan)
-        bg_node.inputs[0].default_value = (0.5, 0.8, 1.0, 1)
+        bg_node.inputs[0].default_value = (0.18, 0.44, 0.70, 1)
+        bg_node.inputs[1].default_value = (
+            0.2  # Increase the strength for more ambient light
+        )
+    else:
+        raise Exception("i need a Background node")
 
 def setup_render_settings(output_path):
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_EEVEE_NEXT'
     if hasattr(scene, "eevee_next"):
         scene.eevee_next.use_bloom = True
-        scene.eevee_next.bloom_threshold = 0.8
-        scene.eevee_next.bloom_intensity = 0.1
+        scene.eevee_next.bloom_intensity = 0.3  # increased intensity
+        scene.eevee_next.bloom_threshold = 0.5  # lower threshold
         scene.eevee_next.bloom_radius = 6.5
     else:
         print("Eevee Next bloom settings not found, skipping bloom configuration.")
+
+    scene.view_settings.view_transform = "Filmic"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = 0.0
+
     scene.render.resolution_x = 1920
     scene.render.resolution_y = 1080
     scene.render.image_settings.file_format = 'PNG'

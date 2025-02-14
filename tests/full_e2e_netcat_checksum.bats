@@ -1,24 +1,30 @@
 #!/usr/bin/env bats
 
-setup() {
-    # Ensure netcat and md5sum are installed
-    command -v nc >/dev/null 2>&1 || {
-        echo "netcat is required but not installed."
-        exit 1
-    }
-    command -v md5sum >/dev/null 2>&1 || {
-        echo "md5sum is required but not installed."
-        exit 1
-    }
+source tools.bats
 
-    # Build portredirect-rs
+ensure_deps() {
+    check_command cargo
+    check_command nc
+    check_command md5sum
+}
+
+setup() {
+    ensure_deps
+
+    LOG_NAME="prrs_full_e2e_netcat_checksum"
+
+    # Create log files base dir
+    mkdir -p ./testlogs
+    LOG_DIR=$(mktemp -p ./testlogs -d "${LOG_NAME}_$(date +%Y%m%d-%H%M%S).XXXXXX")
+
+    # Build the project
     cargo build
 
     # Start portredirect server in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server \
         --local-host 127.0.0.1 --local-port 10002 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
-        >server.log 2>&1 &
+        >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
 
     # Wait a short time for the server to be ready
@@ -30,7 +36,7 @@ setup() {
         --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
         --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
         --provide-metrics \
-        >client.log 2>&1 &
+        >"$LOG_DIR/portredirect_client.log" 2>&1 &
     CLIENT_PID=$!
 
     # Wait for services to start up
@@ -38,7 +44,9 @@ setup() {
 }
 
 teardown() {
-    # Kill background processes if any
+    get_metrics "$LOG_DIR/portredirect_client_metrics.log"
+
+    # Kill background processes
     kill $SERVER_PID $CLIENT_PID || true
 }
 

@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "jetmartin.bats",
-        "foxundermoon.shell-format"
+        "foxundermoon.shell-format",
+        "editorconfig.editorconfig"
     ]
 }

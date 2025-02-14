@@ -1,9 +1,9 @@
+use crate::PortRedirectProtocol;
+
 use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{interval, timeout, Duration};
 use tracing::{info, warn};
-
-use crate::PortRedirectProtocol;
 
 /// The amount of time to wait for a PONG response before timing out.
 const READ_TIMEOUT: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_TIMEOUT;

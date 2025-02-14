@@ -14,8 +14,9 @@
 //
 // License: GPL-3.0-only
 
-use crate::protocol::utils::ElapsedMinutes;
-use crate::protocol::utils::TimeProvider;
+use super::utils::ElapsedMinutes;
+use super::utils::TimeProvider;
+
 use anyhow::{anyhow, Result};
 use secrecy::ExposeSecret;
 use secrecy::SecretString;

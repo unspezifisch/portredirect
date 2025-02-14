@@ -24,7 +24,7 @@ pub async fn forward_tcp_to_quic_stream(
             .await
             .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
-    let stream_id = quic_stream.recv.id();
+    let stream_id = quic_stream.recv.get_ref().id();
     debug!("Starting QUIC->TCP stream handler, stream id {}", stream_id);
 
     forward_bidirectional(

@@ -25,6 +25,8 @@ import time
 import logging
 import sys
 import click
+import statistics
+from functools import partial
 
 # -----------------------------
 # Global statistics and error flag
@@ -35,6 +37,12 @@ active_up_stats = {}
 active_down_stats = {}
 connection_counter = 0
 error_occurred = False  # set to True if any data error or exception occurs
+
+# Global profiling lists
+connection_setup_times = []  # how long it took to set up a connection
+connection_teardown_times = []  # how long it took to tear down a connection
+connection_transfer_times = []  # overall transfer time per connection
+connection_transfer_rates = []  # MB/s per connection (each direction)
 
 def get_new_connection_id(prefix: str = "L") -> str:
     """Generate a unique connection ID with a given prefix (e.g. 'L' for listener)."""
@@ -105,10 +113,28 @@ def setup_logging():
 
 
 # -----------------------------
+# Utility for formatting bytes as MB
+# -----------------------------
+def format_mb(value: float) -> str:
+    """Convert a value in bytes to a string representing megabytes (MB) with two decimals."""
+    return f"{value / (1024 * 1024):.2f}"
+
+
+# -----------------------------
+# Utility for closing a writer cleanly
+# -----------------------------
+async def close_writer(writer: asyncio.StreamWriter) -> None:
+    """Close the writer and wait for it to close."""
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except Exception:
+        pass
+
+
+# -----------------------------
 # Data transfer functions
 # -----------------------------
-
-
 async def send_blocks(
     writer: asyncio.StreamWriter,
     total_bytes: int,
@@ -206,14 +232,14 @@ async def exercise_connection(
     writer: asyncio.StreamWriter,
     total_bytes: int,
     block_size: int,
-    seed_send: int,
     conn_id: str,
 ) -> None:
     """
     Run bidirectional transmission on a connection.
     Launch send and receive tasks concurrently and log the overall speed.
+    Also record the overall transfer time and per‑connection speed.
     """
-    global error_occurred
+    global error_occurred, connection_transfer_times, connection_transfer_rates
     peer = writer.get_extra_info("peername")
     logging.info("Starting transfer on connection %s (peer: %s)", conn_id, peer)
     start_time = time.time()
@@ -232,12 +258,15 @@ async def exercise_connection(
 
     elapsed = time.time() - start_time
     mb = total_bytes / (1024 * 1024)
+    rate = mb / elapsed if elapsed > 0 else 0
     logging.info(
         "Connection %s complete in %.2f s (%.2f MB/s each direction)",
         conn_id,
         elapsed,
-        mb / elapsed if elapsed > 0 else 0,
+        rate,
     )
+    connection_transfer_times.append(elapsed)
+    connection_transfer_rates.append(rate)
     active_up_stats.pop(conn_id, None)
     active_down_stats.pop(conn_id, None)
 
@@ -245,45 +274,45 @@ async def exercise_connection(
 # -----------------------------
 # Worker (client) side
 # -----------------------------
-
 async def worker(
     worker_id: int, server_addr: tuple, total_bytes: int, block_size: int
 ) -> None:
     """
     A worker that connects to the tunnel’s server side and runs the transmission test.
     Uses the worker's unique ID as part of its connection ID.
+    Also profiles the connection setup and teardown durations.
     """
+    global error_occurred, connection_setup_times, connection_teardown_times
     conn_id = f"W{worker_id}"
     logging.info(
         "Worker %s: connecting to %s:%d", conn_id, server_addr[0], server_addr[1]
     )
+    setup_start = time.time()
     try:
         reader, writer = await asyncio.open_connection(*server_addr)
     except Exception as e:
         logging.exception("Worker %s: failed to connect: %s", conn_id, e)
-        global error_occurred
         error_occurred = True
         raise
+    setup_duration = time.time() - setup_start
+    connection_setup_times.append(setup_duration)
+    logging.info("Worker %s: connection setup took %.4f s", conn_id, setup_duration)
 
     try:
-        await exercise_connection(
-            reader,
-            writer,
-            total_bytes,
-            block_size,
-            seed_send=worker_id,  # seed not used in data generation now
-            conn_id=conn_id,
-        )
+        await exercise_connection(reader, writer, total_bytes, block_size, conn_id)
     except Exception as e:
         logging.exception("Worker %s encountered an error: %s", conn_id, e)
         raise
     finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
-        logging.info("Worker %s: connection closed", conn_id)
+        teardown_start = time.time()
+        await close_writer(writer)
+        teardown_duration = time.time() - teardown_start
+        connection_teardown_times.append(teardown_duration)
+        logging.info(
+            "Worker %s: connection closed (teardown took %.4f s)",
+            conn_id,
+            teardown_duration,
+        )
 
 
 async def run_workers(
@@ -306,7 +335,6 @@ async def run_workers(
 # -----------------------------
 # TCP Listener (server) side
 # -----------------------------
-
 async def handle_connection(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
@@ -315,27 +343,20 @@ async def handle_connection(
 ) -> None:
     """
     Handle an incoming connection on our TCP listener.
-    Generate a random seed (based on current time) and a unique connection ID.
+    Generate a unique connection ID.
     """
     conn_id = get_new_connection_id("L")
     peer = writer.get_extra_info("peername")
     logging.info("Accepted connection %s from %s", conn_id, peer)
-    seed_send = int(time.time() * 1000) & 0xFFFFFFFF
     try:
-        await exercise_connection(
-            reader, writer, total_bytes, block_size, seed_send, conn_id
-        )
+        await exercise_connection(reader, writer, total_bytes, block_size, conn_id)
     except Exception as e:
         logging.exception("Error handling connection %s from %s: %s", conn_id, peer, e)
         global error_occurred
         error_occurred = True
         raise
     finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
+        await close_writer(writer)
         logging.info("Closed connection %s from %s", conn_id, peer)
 
 
@@ -345,7 +366,9 @@ async def tcp_listener(host: str, port: int, total_bytes: int, block_size: int) 
     Each new connection is handled by handle_connection().
     """
     server = await asyncio.start_server(
-        lambda r, w: handle_connection(r, w, total_bytes, block_size), host, port
+        partial(handle_connection, total_bytes=total_bytes, block_size=block_size),
+        host,
+        port,
     )
     addrs = ", ".join(str(sock.getsockname()) for sock in server.sockets)
     logging.info("TCP listener running on %s", addrs)
@@ -356,11 +379,6 @@ async def tcp_listener(host: str, port: int, total_bytes: int, block_size: int) 
 # -----------------------------
 # Monitor for realtime stats
 # -----------------------------
-def format_mb(value: float) -> str:
-    """Convert a value in bytes to a string representing megabytes (MB) with two decimals."""
-    return f"{value/(1024*1024):.2f}"
-
-
 async def monitor_stats(
     expected_up: int, expected_down: int, update_interval: float = 1.0
 ) -> None:
@@ -368,6 +386,7 @@ async def monitor_stats(
     Periodically (every update_interval seconds) compute and log realtime stats:
       - For each direction: min/max/avg instantaneous speeds (MB/s) among active connections.
       - Total bytes transmitted and percent progress.
+    Stops monitoring once both UP and DOWN transfers have reached their expected totals.
     """
     YELLOW = ColoredFormatter.YELLOW
     RED = ColoredFormatter.RED
@@ -406,11 +425,96 @@ async def monitor_stats(
         )
         logging.info(msg)
 
+        # Stop monitoring if both directions have reached (or exceeded) their expected totals.
+        if (
+            global_total_up_bytes >= expected_up
+            and global_total_down_bytes >= expected_down
+        ):
+            break
+
+
+# -----------------------------
+# Benchmark Summary Function
+# -----------------------------
+def summarize_list(times_list):
+    """Return average, min, max, and variance of a list of floats."""
+    if not times_list:
+        return 0, 0, 0, 0
+    avg = statistics.mean(times_list)
+    min_val = min(times_list)
+    max_val = max(times_list)
+    var = statistics.variance(times_list) if len(times_list) > 1 else 0.0
+    return avg, min_val, max_val, var
+
+
+def print_benchmark_summary(overall_elapsed: float):
+    """Print a summary of the benchmark performance and profiling data."""
+    total_up_str = format_mb(global_total_up_bytes)
+    total_down_str = format_mb(global_total_down_bytes)
+    total_up_mb = global_total_up_bytes / (1024 * 1024)
+    total_down_mb = global_total_down_bytes / (1024 * 1024)
+    overall_up_rate = total_up_mb / overall_elapsed if overall_elapsed > 0 else 0
+    overall_down_rate = total_down_mb / overall_elapsed if overall_elapsed > 0 else 0
+
+    logging.info("\n========== Benchmark Summary ==========")
+    logging.info("Overall benchmark duration: %.2f s", overall_elapsed)
+    logging.info(
+        "Total UP:   %s MB  (avg speed: %.2f MB/s)", total_up_str, overall_up_rate
+    )
+    logging.info(
+        "Total DOWN: %s MB  (avg speed: %.2f MB/s)", total_down_str, overall_down_rate
+    )
+
+    if connection_transfer_times:
+        avg_time, min_time, max_time, var_time = summarize_list(
+            connection_transfer_times
+        )
+        logging.info(
+            "Connection transfer time (s): avg: %.2f, min: %.2f, max: %.2f, variance: %.4f",
+            avg_time,
+            min_time,
+            max_time,
+            var_time,
+        )
+    if connection_transfer_rates:
+        avg_rate, min_rate, max_rate, var_rate = summarize_list(
+            connection_transfer_rates
+        )
+        logging.info(
+            "Connection transfer rate (MB/s): avg: %.2f, min: %.2f, max: %.2f, variance: %.4f",
+            avg_rate,
+            min_rate,
+            max_rate,
+            var_rate,
+        )
+    if connection_setup_times:
+        avg_setup, min_setup, max_setup, var_setup = summarize_list(
+            connection_setup_times
+        )
+        logging.info(
+            "Connection setup time (s): avg: %.4f, min: %.4f, max: %.4f, variance: %.6f",
+            avg_setup,
+            min_setup,
+            max_setup,
+            var_setup,
+        )
+    if connection_teardown_times:
+        avg_teardown, min_teardown, max_teardown, var_teardown = summarize_list(
+            connection_teardown_times
+        )
+        logging.info(
+            "Connection teardown time (s): avg: %.4f, min: %.4f, max: %.4f, variance: %.6f",
+            avg_teardown,
+            min_teardown,
+            max_teardown,
+            var_teardown,
+        )
+    logging.info("=======================================\n")
+
 
 # -----------------------------
 # Main function and CLI via Click
 # -----------------------------
-
 async def async_main(
     workers: int,
     block_size: int,
@@ -422,19 +526,23 @@ async def async_main(
 ) -> None:
     setup_logging()
 
-    # Expected total bytes per direction across all connections.
+    # Expected total bytes per direction across all endpoints.
+    # Each tunnel connection has two endpoints, so the global totals will be 2 * workers * total_bytes.
     expected_total_up = 2 * workers * total_bytes
     expected_total_down = 2 * workers * total_bytes
 
     listener_task = asyncio.create_task(
         tcp_listener(listener_host, listener_port, total_bytes, block_size)
     )
+    # Give the listener a moment to start.
     await asyncio.sleep(1)
 
     monitor_task = asyncio.create_task(
         monitor_stats(expected_total_up, expected_total_down, update_interval=1)
     )
 
+    # Record overall benchmark start time (workers side)
+    benchmark_start_time = time.time()
     try:
         await run_workers(workers, (server_host, server_port), total_bytes, block_size)
     except Exception as e:
@@ -443,6 +551,14 @@ async def async_main(
         listener_task.cancel()
         monitor_task.cancel()
         raise
+    benchmark_end_time = time.time()
+    overall_elapsed = benchmark_end_time - benchmark_start_time
+
+    # Wait a moment for monitor_stats to finish if it hasn't already.
+    try:
+        await monitor_task
+    except asyncio.CancelledError:
+        logging.info("Monitor task cancelled.")
 
     listener_task.cancel()
     try:
@@ -450,11 +566,7 @@ async def async_main(
     except asyncio.CancelledError:
         logging.info("TCP listener cancelled.")
 
-    monitor_task.cancel()
-    try:
-        await monitor_task
-    except asyncio.CancelledError:
-        logging.info("Monitor task cancelled.")
+    print_benchmark_summary(overall_elapsed)
 
     if error_occurred:
         logging.error("Benchmark completed with errors.")
@@ -474,7 +586,7 @@ async def async_main(
 )
 @click.option(
     "--block-size",
-    default=1024,
+    default=1024 * 64,
     show_default=True,
     type=int,
     help="Block size in bytes used when sending data.",

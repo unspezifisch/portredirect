@@ -2,6 +2,7 @@
     "recommendations": [
         "jetmartin.bats",
         "foxundermoon.shell-format",
-        "editorconfig.editorconfig"
+        "editorconfig.editorconfig",
+        "bluebrown.yamlfmt"
     ]
 }

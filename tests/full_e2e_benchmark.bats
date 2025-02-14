@@ -31,7 +31,7 @@
 # |                                                              |
 #  --------------------------------------------------------------
 
-source tools.bats
+load tools.bats
 
 setup() {
     LOG_NAME="prrs_full_e2e_benchmark"

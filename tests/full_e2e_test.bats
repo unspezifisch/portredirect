@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # This test checks that portredirect runs and doesn't blatantly crash or exits with an error.
 
-load ./tools.bats
+load tools.bats
 
 setup() {
     LOG_NAME="prrs_full_e2e_test"

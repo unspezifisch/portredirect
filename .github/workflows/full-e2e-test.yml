@@ -4,7 +4,7 @@ name: Full End-to-End Test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       debug_enabled:
@@ -12,48 +12,42 @@ on:
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
         required: false
         default: false
-
 jobs:
   load-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-
-      - name: Install iperf3 and bats
+      - name: Install packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
-          sudo apt-get install -y iperf3
-
+          sudo apt-get install -y bats iperf3
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
           limit-access-to-actor: true
-
       - name: Run BATS test(s)
         run: bats --gather-test-outputs-in ./bats-logs tests/full_e2e_test.bats
-
       - name: Show Log Files
         if: always()
         run: |
-          cat iperf_server.log || true
-          cat ./bats-logs/* || true
-
+          echo "========== testlogs =========="
+          tail -n+0 ./testlogs/*/* || true
+          echo "========== bats-logs =========="
+          tail -n+0 ./bats-logs/* || true
       - name: Upload Logs
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: portredirect-e2e-test-logs
           path: |
-            iperf_server.log
-            ./bats-logs/*
-
+            ./testlogs
+            ./bats-logs
+            

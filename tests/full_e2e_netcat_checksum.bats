@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-source tools.bats
+load tools.bats
 
 ensure_deps() {
     check_command cargo

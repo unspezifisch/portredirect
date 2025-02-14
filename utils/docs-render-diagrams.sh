@@ -21,9 +21,9 @@ echo "Rendering DOT files in ${DOCS_DIR}..."
 
 for dotfile in "${DOCS_DIR}"/*.dot; do
     filename=$(basename "${dotfile}" .dot)
-    output="${DOCS_DIR}/${filename}.png"
+    output="${DOCS_DIR}/${filename}.svg"
     echo "Rendering ${dotfile} to ${output}"
-    dot -Tpng "${dotfile}" -o "${output}"
+    dot -Tsvg "${dotfile}" -o "${output}"
 done
 
 echo "Rendering complete."

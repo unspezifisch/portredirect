@@ -19,21 +19,27 @@ Both use a pre-shared key (PSK) for authentication and auto-generate certificate
 
 ### Concept
 
-Let us sneakily introduce show you how this tunneling tool works, while describing essentially one of our CI tests.
+In this example, we compare two methods for a web browser to reach a secure HTTPS server:
 
-Imagine comparing a direct TCP connection with one tunneled via QUIC. In the **baseline scenario** (Figure 1), an iperf3 client connects directly to an iperf3 server over TCP. In contrast, **Figure 2** shows how PortRedirect-RS intercepts the traffic: the server tunnels TCP connections over QUIC, and the client forwards them to the actual service.
+- **Baseline (Direct) Connection:**  
+  The user's web browser establishes a direct TCP connection to a public web server hosting HTTPS (Figure 1).
 
-#### Figure 1: Baseline (Direct) Connection
+- **Tunneled Connection via PortRedirect:**  
+  Here, a small public server running a tunneling service intercepts the connection. The browser connects to this server over TCP. Then, a home server (running PortRedirect's client) establishes a secure QUIC tunnel with the public server, which forwards the traffic to an HTTPS server running on the home network (Figure 2).
 
-![Baseline Connection Diagram](docs/benchmark_baseline_test.png)
+> **Note:** The arrows in the following diagrams indicate the initiator of the connection (not necessarily the direction of data flow, which can always be bidirectional).
 
-*Direct TCP connection between the iperf3 client and server.*
+#### Figure 1: Direct TCP Connection
+
+![Direct Connection Diagram](docs/benchmark_baseline_test.svg)
+
+*In this scenario, the user's web browser connects directly to the public HTTPS server using a standard TCP connection.*
 
 #### Figure 2: Tunneled Connection via PortRedirect
 
-![Tunneled Connection Diagram](docs/benchmark_tunneled_test.png)
+![Tunneled Connection Diagram](docs/benchmark_tunneled_test.svg)
 
-*Traffic is encapsulated in a QUIC tunnel by the server and forwarded by the client to the iperf3 server.*
+*In the tunneled scenario, the user's web browser still initiates a TCP connection to the public endpoint. However, the connection is then forwarded through a secure QUIC tunnel, established between the home server (portredirect_client) and the frontend server (portredirect_server), to reach the internal HTTPS server.*
 
 ## Installation
 

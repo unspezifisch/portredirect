@@ -65,7 +65,7 @@ portredirect_client \
 
 - **`--destination-host` & `--destination-port`:** The target host and port for relaying traffic.
 - **`--quic-remote-host` & `--quic-remote-port`:** The QUIC server’s address and port.
-- **`--quic-remote-hostname-match`:** Ensures the TLS certificate of the QUIC server matches the expected hostname.
+- **`--quic-remote-hostname-match`:** Ensures the TLS certificate of the QUIC server matches the expected hostname. This must be the same as the `quic-server-host` parameter on the `portredirect_server` side.
 - **`--quic-psk`:** Must match the server’s pre-shared key.
 
 > **Important:** The client needs to verify the identity of the QUIC server using its certificate. On startup, both the server and client generate their own certificates if they do not already exist. These certificates are stored as `.der` files in the `~/.config/portredirect` directory.
@@ -73,7 +73,7 @@ portredirect_client \
 
 ### Security Notice: PSK Best Practices
 
-For secure operation, **always use a long and random pre-shared key (PSK)**.
+For secure operation of the QUIC server on untrusted interfaces, **always use a long and random pre-shared key (PSK)**.
 
 **Recommendation:**  
 

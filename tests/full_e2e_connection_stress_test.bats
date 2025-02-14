@@ -43,12 +43,12 @@ teardown() {
 
 @test "Baseline test (direct connection)" {
     # make the benchmark connect to itself
-    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234
+    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234 --log-file "$LOG_DIR/cst_baseline.log"
     [ "$status" -eq 0 ]
 }
 
 @test "Tunneled test (via portredirect)" {
-    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201
+    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201 --log-file "$LOG_DIR/cst_baseline.log"
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs

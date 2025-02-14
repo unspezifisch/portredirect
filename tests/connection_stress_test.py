@@ -44,6 +44,7 @@ connection_teardown_times = []  # how long it took to tear down a connection
 connection_transfer_times = []  # overall transfer time per connection
 connection_transfer_rates = []  # MB/s per connection (each direction)
 
+
 def get_new_connection_id(prefix: str = "L") -> str:
     """Generate a unique connection ID with a given prefix (e.g. 'L' for listener)."""
     global connection_counter
@@ -100,7 +101,8 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logging():
+def setup_logging(log_file=None):
+    # Create a stream (console) handler with colored output.
     handler = logging.StreamHandler()
     formatter = ColoredFormatter("%(asctime)s %(levelname)s: %(message)s")
     handler.setFormatter(formatter)
@@ -110,6 +112,13 @@ def setup_logging():
     if logger.hasHandlers():
         logger.handlers.clear()
     logger.addHandler(handler)
+
+    # If a log file is provided, add a file handler.
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_formatter = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
 
 
 # -----------------------------
@@ -523,8 +532,9 @@ async def async_main(
     server_port: int,
     listener_host: str,
     listener_port: int,
+    log_file: str = None,
 ) -> None:
-    setup_logging()
+    setup_logging(log_file)
 
     # Expected total bytes per direction across all endpoints.
     # Each tunnel connection has two endpoints, so the global totals will be 2 * workers * total_bytes.
@@ -626,6 +636,9 @@ async def async_main(
     type=int,
     help="Port for the TCP listener.",
 )
+@click.option(
+    "--log-file", default=None, type=str, help="File to write additional log output."
+)
 def cli(
     workers,
     block_size,
@@ -634,6 +647,7 @@ def cli(
     server_port,
     listener_host,
     listener_port,
+    log_file,
 ):
     """
     Benchmark tool for testing tunnel performance and data integrity.
@@ -649,6 +663,7 @@ def cli(
                 server_port,
                 listener_host,
                 listener_port,
+                log_file,
             )
         )
     except Exception as e:

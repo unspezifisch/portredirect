@@ -24,8 +24,9 @@ In this example, we compare two methods for a web browser to reach a secure HTTP
 - **Baseline (Direct) Connection:**  
   The user's web browser establishes a direct TCP connection to a public web server hosting HTTPS (Figure 1).
 
-- **Tunneled Connection via PortRedirect:**  
-  Here, a small public server running a tunneling service intercepts the connection. The browser connects to this server over TCP. Then, a home server (running PortRedirect's client) establishes a secure QUIC tunnel with the public server, which forwards the traffic to an HTTPS server running on the home network (Figure 2).
+- **Tunneled Connection via PortRedirect:**
+  In this scenario, a home server running PortRedirect's client establishes a secure QUIC tunnel with the small cheap public server, which then forwards incoming connections to us. The connections get patched through to a local HTTPS server (see Figure 2).
+  The public side running PortRedirect's server can then accept TCP connections from browsers. By forwarding them through the established QUIC tunnel, they can communicate with the HTTPS server, almost as if we had rented a big publicly reachable server.
 
 > **Note:** The arrows in the following diagrams indicate the initiator of the connection (not necessarily the direction of data flow, which can always be bidirectional).
 

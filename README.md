@@ -165,7 +165,7 @@ PortRedirect-RS is best suited for scenarios where you need a straightforward TC
 - **Protocol Support:** Currently supports IPv4 and TCP.
 - **Connection Model:** Designed for one-to-one QUIC connections between server and client, with the possibility of extending this in the future.
 - **Scalability:** Not yet optimized for extremely high concurrency.
-- **Security:** We try our best but no guarantees, see [SECURITY](SECURITY).
+- **Security:** We try our best but no guarantees, see [SECURITY](SECURITY.md).
 
 ## License
 

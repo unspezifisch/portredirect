@@ -16,21 +16,29 @@ jobs:
       - name: Install packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
-      - name: Run BATS test(s)
+          sudo apt-get install -y bats python3-click python3-pandas python3-matplotlib python3-scipy
+      - name: Run Python Unit Tests (for Data Cruncher)
+        working-directory: tests
+        run: python -m unittest test_cst_datacruncher.py
+      - name: Run Big Benchmark
         run: bats --gather-test-outputs-in ./bats-logs tests/full_e2e_connection_stress_test.bats
-      - name: Show Log Files
+      - name: Run Data Cruncher for Plots
+        run: python3 tests/cst_datacruncher.py -o testplots testlogs/prrs_*/cst_*
+      - name: Show Log and Plot Files
         if: always()
         run: |
           echo "========== testlogs =========="
           tail -n+0 ./testlogs/*/* || true
           echo "========== bats-logs =========="
           tail -n+0 ./bats-logs/* || true
-      - name: Upload Logs
+          echo "========== testplots =========="
+          ls -l testplots || true
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: portredirect-e2e-benchmark-logs
+          name: portredirect-e2e-benchmark-artifacts
           path: |
             ./testlogs
             ./bats-logs
+            ./testplots

@@ -505,7 +505,7 @@ def main(outdir, files):
     plot_down_speed_boxplot(df, outdir)
     plot_cumulative_transfer(df, outdir)
     plot_aggregated_bar_chart(df, outdir)
-    plot_throughput_vs_concurrency(df, outdir)
+    # plot_throughput_vs_concurrency(df, outdir)
     plot_throughput_density(df, outdir)
 
 

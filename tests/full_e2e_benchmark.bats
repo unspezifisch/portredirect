@@ -91,12 +91,12 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs
-    if grep -q "ERROR" server.log; then
-        echo "ERROR found in server.log"
+    if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
+        echo "ERROR found in server log"
         exit 1
     fi
-    if grep -q "ERROR" client.log; then
-        echo "ERROR found in client.log"
+    if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
+        echo "ERROR found in client log"
         exit 1
     fi
 }
@@ -108,12 +108,12 @@ teardown() {
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs
-    if grep -q "ERROR" server.log; then
-        echo "ERROR found in server.log"
+    if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
+        echo "ERROR found in server log"
         exit 1
     fi
-    if grep -q "ERROR" client.log; then
-        echo "ERROR found in client.log"
+    if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
+        echo "ERROR found in client log"
         exit 1
     fi
 }

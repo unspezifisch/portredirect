@@ -90,4 +90,14 @@ send_and_verify() {
     for i in {1..100}; do
         send_and_verify 1
     done
+
+    # Check that no ERROR occurred in the portredirect logs
+    if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
+        echo "ERROR found in server log"
+        exit 1
+    fi
+    if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
+        echo "ERROR found in client log"
+        exit 1
+    fi
 }

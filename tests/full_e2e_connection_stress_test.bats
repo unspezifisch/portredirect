@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
-# This test checks that portredirect runs and doesn't blatantly crash or exits with an error.
 
 load tools.bats
 
 setup() {
-    LOG_NAME="prrs_full_e2e_test"
+    LOG_NAME="prrs_full_e2e_connection_stress_test"
 
     # Create log files base dir
     mkdir -p ./testlogs
@@ -15,7 +14,7 @@ setup() {
 
     # Start portredirect server in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server \
-        --local-host 127.0.0.1 --local-port 10001 \
+        --local-host 127.0.0.1 --local-port 10003 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
@@ -32,30 +31,24 @@ setup() {
         >"$LOG_DIR/portredirect_client.log" 2>&1 &
     CLIENT_PID=$!
 
-    # Start iperf3 server in background
-    iperf3 -s \
-        >"$LOG_DIR/iperf_server.log" 2>&1 &
-    IPERF_PID=$!
-
     # Wait for services to start up
-    sleep 5
+    sleep 1
 }
 
 teardown() {
-    kill $SERVER_PID $CLIENT_PID $IPERF_PID || true
+    get_metrics "$LOG_DIR/portredirect_client_metrics.log"
+
+    kill $SERVER_PID $CLIENT_PID || true
 }
 
-@test "Tunneled iperf3 test (via portredirect)" {
-    # forward test
-    run iperf3 -c 127.0.0.1 -p 10001 -l 5
+@test "Baseline test (direct connection)" {
+    # make the benchmark connect to itself
+    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234
     [ "$status" -eq 0 ]
+}
 
-    # reverse test
-    run iperf3 -c 127.0.0.1 -p 10001 -l 5 -R
-    [ "$status" -eq 0 ]
-
-    # get metrics, ensure this test fails if metrics don't work
-    run get_metrics "$LOG_DIR/portredirect_client_metrics.log"
+@test "Tunneled test (via portredirect)" {
+    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs

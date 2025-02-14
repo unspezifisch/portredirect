@@ -1,0 +1,36 @@
+name: Full End-to-End connection stress test
+on:
+  push:
+    branches: ["main"]
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+      - name: Run BATS test(s)
+        run: bats --gather-test-outputs-in ./bats-logs tests/full_e2e_connection_stress_test.bats
+      - name: Show Log Files
+        if: always()
+        run: |
+          echo "========== testlogs =========="
+          tail -n+0 ./testlogs/*/* || true
+          echo "========== bats-logs =========="
+          tail -n+0 ./bats-logs/* || true
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portredirect-e2e-benchmark-logs
+          path: |
+            ./testlogs
+            ./bats-logs

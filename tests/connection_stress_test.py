@@ -614,7 +614,7 @@ async def async_main(
 )
 @click.option(
     "--listener-host",
-    default="0.0.0.0",
+    default="127.0.0.1",
     show_default=True,
     type=str,
     help="Host for the TCP listener (tunnel's client side).",

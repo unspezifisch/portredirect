@@ -1,4 +1,4 @@
-name: Coverage
+name: Coverage Report (codecov)
 
 on: [pull_request, push]
 

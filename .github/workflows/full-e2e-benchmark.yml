@@ -1,4 +1,4 @@
-name: Full End-to-End Load Benchmark
+name: Full End-to-End Benchmark (iperf3)
 on:
   push:
     branches: ["main"]

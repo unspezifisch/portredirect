@@ -1,4 +1,4 @@
-name: Full End-to-End connection stress test
+name: Full End-to-End Benchmark (custom python script)
 on:
   push:
     branches: ["main"]

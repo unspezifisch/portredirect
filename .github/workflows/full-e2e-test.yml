@@ -1,5 +1,5 @@
-name: Full End-to-End Test
-# Similar to the benchmark workflow, but with a few checks removed.
+name: Full End-to-End Simple Test (iperf3)
+# This test checks that portredirect runs and doesn't blatantly crash or exits with an error.
 # Also added a debug tmate hook.
 
 on:
@@ -12,6 +12,8 @@ on:
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
         required: false
         default: false
+env:
+  CARGO_TERM_COLOR: always
 jobs:
   load-test:
     runs-on: ubuntu-latest
@@ -50,4 +52,3 @@ jobs:
           path: |
             ./testlogs
             ./bats-logs
-            

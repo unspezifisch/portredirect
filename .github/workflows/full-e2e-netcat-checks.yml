@@ -1,4 +1,4 @@
-name: Full End-to-End Netcat Data Integrity Checks
+name: Full End-to-End Data Integrity Test (netcat/checksums)
 on:
   push:
     branches: ["main"]

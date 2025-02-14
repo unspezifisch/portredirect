@@ -2,7 +2,7 @@
 
 *Glue your frontend to the backend!*
 
-![Enhanced PortRedirect Logo showing a green pipe with the text superimposed with golden color](./docs/portredirect_logo.png)
+![PortRedirect Logo showing a green pipe with the text superimposed with golden color](./docs/portredirect_logo.png)
 
 ## Intro
 

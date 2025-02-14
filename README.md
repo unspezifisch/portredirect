@@ -4,45 +4,40 @@
 
 ![PortRedirect Logo showing a green pipe with the text superimposed with golden color](./docs/portredirect_logo.png)
 
-## Intro
+## Introduction
 
-PortRedirect is basically a user space TCP forwarding solution. It is split into **server** and **client** sides.
+PortRedirect is a lightweight user-space TCP forwarder that bridges your frontend and backend via a secure QUIC tunnel. It has two components:
 
-**Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol
+- **Server:** Listens for incoming TCP connections (e.g., on port 443) and tunnels them over a persistent QUIC connection.
+- **Client:** Connects to the QUIC server, receives tunneled streams, and forwards them to the target TCP service (e.g., `localhost:4433`).
 
-*In short:* Accepts incoming TCP connections and forwards them over a QUIC connection.
-
-**Client:** Redirects incoming server-initiated QUIC streams (multiple streams inside one connection) to a *destination* TCP host and port (e.g., `localhost:4433`, where an HTTPS server might be running). It acts as a QUIC client by initiating the connection to the QUIC server
-
-*In short:* Connects to the QUIC server and relays the tunneled streams to a designated destination.
+Both use a pre-shared key (PSK) for authentication and auto-generate certificates on first run (stored in `~/.config/portredirect`).
 
 ### **Bling:**
 
 [![codecov](https://codecov.io/gh/unspezifisch/portredirect-rs/graph/badge.svg?token=TJSQNU6NMR)](https://codecov.io/gh/unspezifisch/portredirect-rs)
 
-### **Concept:**
+### Concept
 
 Let us sneakily introduce show you how this tunneling tool works, while describing essentially one of our CI tests.
 
-Imagine running a web server such as nginx for HTTPS traffic—but instead, we use an iperf3 server to benchmark connection performance. In real-world scenarios, many clients can connect to a server in parallel, and all traffic must be reliably forwarded. In our CI tests, we compare two configurations: a baseline direct connection and a tunneled connection using PortRedirect-RS.
-
-Below, **Figure 1** illustrates the baseline scenario where the iperf3 client connects directly to the iperf3 server over a standard TCP connection. This setup serves as our control measurement.
+Imagine comparing a direct TCP connection with one tunneled via QUIC. In the **baseline scenario** (Figure 1), an iperf3 client connects directly to an iperf3 server over TCP. In contrast, **Figure 2** shows how PortRedirect-RS intercepts the traffic: the server tunnels TCP connections over QUIC, and the client forwards them to the actual service.
 
 #### Figure 1: Baseline (Direct) Connection
 
 ![Baseline Connection Diagram](docs/benchmark_baseline_test.png)
-*This diagram shows a direct TCP connection between the iperf3 client and server.*
 
-In contrast, **Figure 2** demonstrates how PortRedirect-RS facilitates a tunneled connection. Here, the iperf3 client connects to an intermediate port monitored by the portredirect_server. The server encapsulates the TCP traffic in a persistent QUIC tunnel, which is then received by the portredirect_client and forwarded to the iperf3 server. This configuration simulates a scenario where services are hidden behind a secure tunnel, yet performance remains robust.
+*Direct TCP connection between the iperf3 client and server.*
 
 #### Figure 2: Tunneled Connection via PortRedirect
 
 ![Tunneled Connection Diagram](docs/benchmark_tunneled_test.png)
-*This diagram illustrates how traffic is encapsulated in a QUIC tunnel by the portredirect_server and forwarded by the portredirect_client to the iperf3 server.*
+
+*Traffic is encapsulated in a QUIC tunnel by the server and forwarded by the client to the iperf3 server.*
 
 ## Installation
 
-The easiest way to install PortRedirect-RS is via Cargo. Once installed, both binaries will be available on your system.
+Install via Cargo to get both binaries:
 
 ```sh
 cargo install portredirect
@@ -50,13 +45,9 @@ cargo install portredirect
 
 ## Usage
 
-After installation, you can run the server and client directly from your command line. There’s no need to manually set extra environment variables unless you require additional logging or troubleshooting.
-
 ### Running the Frontend Server
 
-Imagine you’re running a low-budget server (like a VPS with a public IP) that should be reachable on TCP port 443 (HTTPS). That traffic should be forwarded through a VPN (like Wireguard), where your server's VPN IP might be `10.0.0.1`. You’d then run the PortRedirect-RS server on that IP at port 12345.
-
-**Command:**
+For example, if your public server (accessible on TCP port 443) should forward traffic over a VPN (with an internal IP of `10.0.0.1`) on port 12345, run:
 
 ```sh
 portredirect_server \
@@ -65,17 +56,15 @@ portredirect_server \
     --quic-psk your_psk_here
 ```
 
-**Parameters Explained:**
+**Parameters:**
 
-- **`--local-host` & `--local-port`:** Where the server listens for incoming TCP connections.
-- **`--quic-server-host` & `--quic-server-port`:** The network details for the QUIC connection.
-- **`--quic-psk`:** A pre-shared key for authenticating the QUIC tunnel.
+- **`--local-host` & `--local-port`:** Where to listen for incoming TCP connections.
+- **`--quic-server-host` & `--quic-server-port`:** QUIC tunnel details.
+- **`--quic-psk`:** Pre-shared key for secure tunneling.
 
 ### Running the Backend Client
 
-The client connects to the QUIC server and forwards the received streams to your target service.
-
-For example, if you run an `nginx` HTTPS server on `127.0.0.1:4433` (serving, say, cat pictures) on your homeserver (with a big hard drive), which is connected via VPN to your frontend server, you can forward traffic like so:
+To forward traffic to a local service (e.g., an `nginx` server on `127.0.0.1:4433`), run:
 
 ```sh
 portredirect_client \
@@ -85,65 +74,44 @@ portredirect_client \
     --quic-psk your_psk_here
 ```
 
-**Parameters Explained:**
+**Parameters:**
 
-- **`--destination-host` & `--destination-port`:** The target host and port for relaying traffic.
-- **`--quic-remote-host` & `--quic-remote-port`:** The QUIC server’s address and port.
-- **`--quic-remote-hostname-match`:** Ensures the TLS certificate of the QUIC server matches the expected hostname. This must be the same as the `quic-server-host` parameter on the `portredirect_server` side.
-- **`--quic-psk`:** Must match the server’s pre-shared key.
+- **`--destination-host` & `--destination-port`:** The target TCP service.
+- **`--quic-remote-host` & `--quic-remote-port`:** The QUIC server’s address.
+- **`--quic-remote-hostname-match`:** Ensures the server's TLS certificate is valid.
+- **`--quic-psk`:** Must match the server’s PSK.
 
-> **Important:** The client needs to verify the identity of the QUIC server using its certificate. On startup, both the server and client generate their own certificates if they do not already exist. These certificates are stored as `.der` files in the `~/.config/portredirect` directory.
->
-> **Action Required:** Start the server first to generate its certificate, then copy the contents of the server’s `~/.config/portredirect` directory to the corresponding location on the client machine. A Trust-On-First-Use (TOFU) mechanism may be implemented in the future to streamline this process.
+> **Important:** Start the server first to generate its certificate, then copy the contents of the server’s `~/.config/portredirect` directory to the client machine.
 
-### Security Notice: PSK Best Practices
+### PSK Best Practices
 
-For secure operation of the QUIC server on untrusted interfaces, **always use a long and random pre-shared key (PSK)**.
+Always use a long, random pre-shared key when operating over untrusted networks. For example:
 
-**Recommendation:**  
+```sh
+pwgen -s 32 1
+```
 
-- Use tools like [`pwgen`](https://linux.die.net/man/1/pwgen) or [`openssl rand`](https://www.openssl.org/docs/man1.1.1/man1/openssl-rand.html) to generate a robust PSK. For example:
+or
 
-  ```sh
-  pwgen -s 32 1
-  ```
-
-  or
-
-  ```sh
-  openssl rand -hex 32
-  ```
-
-Ensure that the PSK you use for both the server and client matches exactly.
+```sh
+openssl rand -hex 32
+```
 
 ## Authentication & Certificate Verification
 
-PortRedirect-RS employs an authentication mechanism to ensure secure communication over the QUIC tunnel. Although the QUIC port is typically publicly reachable via the Internet, the recommended deployment (as shown in the examples) is behind a VPN for enhanced security.
-
-The main ideas are:
-
-- **Server Trust:**  
-  The client trusts the server because the server presents a public certificate that matches the expected configuration. This certificate is generated on the first run (if not already present) and stored in `~/.config/portredirect` as a `.der` file.
-
-- **Client Authentication:**  
-  The server, on the other hand, does not inherently trust the client. Anyone can connect and claim to speak the PortRedirect-RS protocol. Therefore, the client must prove its trustworthiness by responding to a server-issued challenge.
-
-- **Challenge-Response Mechanism:**  
-  The client must respond to a challenge that only it can correctly answer using the pre-shared key (PSK). The use of a PSK is favored for its simplicity and to avoid the need for exchanging certificates back *and forth*, which could become increasingly cumbersome with multiple clients.
+PortRedirect-RS secures QUIC tunnels using auto-generated certificates and a PSK-based challenge-response system. The client verifies the server’s certificate, while the server challenges the client to prove its identity with the shared PSK.
 
 ## Running Tests
 
-For an overview of the tests you might start looking at the GitHub Actions page, and the `.github/workflows` subdirectory.
-
 ### Cargo Tests
 
-To verify that everything is working correctly, you can run the built-in test suite using Cargo:
+Run all built-in tests with:
 
 ```sh
 cargo test
 ```
 
-This command will execute all the tests associated with the project. If you wish to run a specific test, you can pass a pattern:
+To run specific tests, use a pattern:
 
 ```sh
 cargo test <test_pattern>
@@ -151,32 +119,23 @@ cargo test <test_pattern>
 
 ### BATS Tests
 
-In addition to Cargo tests, there is an extensive suite of Bash Automated Testing System (BATS) tests located in the `./tests/` subdirectory. To run these tests, you need to have BATS installed.
+Install [BATS-Core](https://github.com/bats-core/bats-core) and run:
 
-1. **Install BATS:**
-   - Follow the installation instructions from the [BATS-Core GitHub repository](https://github.com/bats-core/bats-core).
-
-2. **Run the BATS Tests:**
-
-   From the root of the repository, run:
-
-   ```sh
-   bats tests/
-   ```
-
-This command will execute all the BATS tests in the `tests/` directory.
+```sh
+bats tests/<test_file.bats>
+```
 
 ## Command-Line Help
 
-For a full list of options and defaults, simply run the help command for each binary:
+For a complete list of options:
 
-- **Server Help:**
+- **Server Help:**  
 
   ```sh
   portredirect_server --help
   ```
 
-- **Client Help:**
+- **Client Help:**  
 
   ```sh
   portredirect_client --help
@@ -184,7 +143,7 @@ For a full list of options and defaults, simply run the help command for each bi
 
 ## Overview & Limitations
 
-PortRedirect-RS is best suited for scenarios where you need a straightforward TCP-to-QUIC tunnel without complex setup. Please note the following:
+PortRedirect-RS is ideal for simple TCP-to-QUIC tunneling setups:
 
 - **Protocol Support:** Currently supports IPv4 and TCP.
 - **Connection Model:** Designed for one-to-one QUIC connections between server and client, with the possibility of extending this in the future.

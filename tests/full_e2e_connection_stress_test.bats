@@ -37,7 +37,6 @@ setup() {
 
 teardown() {
     get_metrics "$LOG_DIR/portredirect_client_metrics.log"
-
     kill $SERVER_PID $CLIENT_PID || true
 }
 
@@ -53,78 +52,59 @@ pr_log_error_check() {
     fi
 }
 
+# Helper function to run the connection stress test.
+# Arguments:
+#   $1: mode ("baseline" for direct connections, "benchmark" for tunneled tests)
+#   $2: number of workers
+#   $3: total bytes to transfer (e.g. "$((1 * 1024 ** 3))")
+#   $4: a suffix for the log file name (e.g., "1c_1gb")
+run_stress_test() {
+    local mode="$1"
+    local workers="$2"
+    local total_bytes="$3"
+    local suffix="$4"
+
+    local server_port listener_port
+    if [ "$mode" = "baseline" ]; then
+        server_port=1234
+        listener_port=1234
+    else
+        server_port=10003
+        listener_port=5201
+    fi
+
+    local log_file="$LOG_DIR/cst_${mode}_${suffix}.log"
+    run python3 ./tests/connection_stress_test.py --server-port "$server_port" --listener-port "$listener_port" \
+        --log-file "$log_file" \
+        --workers "$workers" \
+        --total-bytes "$total_bytes"
+    [ "$status" -eq 0 ]
+
+    if [ "$mode" = "benchmark" ]; then
+        run pr_log_error_check
+        [ "$status" -eq 0 ]
+    fi
+}
+
 @test "Baseline test (direct connection)" {
-    # make the benchmark connect to itself,
-    # use one big transfer of 1 GiB
-    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234 \
-        --log-file "$LOG_DIR/cst_baseline_1c_1gb.log" \
-        --workers 1 \
-        --total-bytes $((1 * 1024 ** 3))
-    [ "$status" -eq 0 ]
-
-    # 10 workers, 100 MiB each, up/down each
-    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234 \
-        --log-file "$LOG_DIR/cst_baseline_10c_100mb.log" \
-        --workers 10 \
-        --total-bytes $((100 * 1024 ** 2))
-    [ "$status" -eq 0 ]
-
-    # 50 workers, 20 MiB
-    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234 \
-        --log-file "$LOG_DIR/cst_baseline_50c_20mb.log" \
-        --workers 50 \
-        --total-bytes $((20 * 1024 ** 2))
-    [ "$status" -eq 0 ]
-
-    # 100 workers, 10 MiB
-    run python3 ./tests/connection_stress_test.py --server-port 1234 --listener-port 1234 \
-        --log-file "$LOG_DIR/cst_baseline_100c_10mb.log" \
-        --workers 100 \
-        --total-bytes $((10 * 1024 ** 2))
-    [ "$status" -eq 0 ]
+    run_stress_test baseline 1 "$((1 * 1024 ** 3))" "1c_1gb"
+    run_stress_test baseline 10 "$((100 * 1024 ** 2))" "10c_100mb"
+    run_stress_test baseline 50 "$((20 * 1024 ** 2))" "50c_20mb"
+    run_stress_test baseline 100 "$((10 * 1024 ** 2))" "100c_10mb"
 }
 
 @test "Tunneled test (1 single connection, 1 GiB)" {
-    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201 \
-        --log-file "$LOG_DIR/cst_benchmark_1c_1gb.log" \
-        --workers 1 \
-        --total-bytes $((1 * 1024 ** 3))
-    [ "$status" -eq 0 ]
-
-    # Check that no ERROR occurred in the portredirect logs
-    run pr_log_error_check
-    [ "$status" -eq 0 ]
+    run_stress_test benchmark 1 "$((1 * 1024 ** 3))" "1c_1gb"
 }
 
 @test "Tunneled test (10 connections, 100 MiB)" {
-    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201 \
-        --log-file "$LOG_DIR/cst_benchmark_10c_100mb.log" \
-        --workers 10 \
-        --total-bytes $((100 * 1024 ** 2))
-    [ "$status" -eq 0 ]
-
-    run pr_log_error_check
-    [ "$status" -eq 0 ]
+    run_stress_test benchmark 10 "$((100 * 1024 ** 2))" "10c_100mb"
 }
 
 @test "Tunneled test (50 connections, 20 MiB)" {
-    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201 \
-        --log-file "$LOG_DIR/cst_benchmark_50c_20mb.log" \
-        --workers 50 \
-        --total-bytes $((20 * 1024 ** 2))
-    [ "$status" -eq 0 ]
-
-    run pr_log_error_check
-    [ "$status" -eq 0 ]
+    run_stress_test benchmark 50 "$((20 * 1024 ** 2))" "50c_20mb"
 }
 
 @test "Tunneled test (100 connections, 10 MiB)" {
-    run python3 ./tests/connection_stress_test.py --server-port 10003 --listener-port 5201 \
-        --log-file "$LOG_DIR/cst_benchmark_100c_10mb.log" \
-        --workers 100 \
-        --total-bytes $((10 * 1024 ** 2))
-    [ "$status" -eq 0 ]
-
-    run pr_log_error_check
-    [ "$status" -eq 0 ]
+    run_stress_test benchmark 100 "$((10 * 1024 ** 2))" "100c_10mb"
 }

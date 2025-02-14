@@ -2,15 +2,15 @@
 
 *Glue your frontend to the backend!*
 
-## Introduction
+## Intro
 
 PortRedirect is split into **server** and **client** sides.
 
-### **Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol
+**Server:** Redirects incoming TCP connections (e.g., port 443) to a remote *client* through a persistent QUIC connection. It acts as a QUIC server (e.g., port 1234 on a private interface) with a custom PortRedirect-RS application protocol
 
 *In short:* Accepts incoming TCP connections and forwards them over a QUIC connection.
 
-### **Client:** Redirects incoming server-initiated QUIC streams (multiple streams inside one connection) to a *destination* TCP host and port (e.g., `localhost:4433`, where an HTTPS server might be running). It acts as a QUIC client by initiating the connection to the QUIC server
+**Client:** Redirects incoming server-initiated QUIC streams (multiple streams inside one connection) to a *destination* TCP host and port (e.g., `localhost:4433`, where an HTTPS server might be running). It acts as a QUIC client by initiating the connection to the QUIC server
 
 *In short:* Connects to the QUIC server and relays the tunneled streams to a designated destination.
 

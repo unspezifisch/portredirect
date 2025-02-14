@@ -196,9 +196,9 @@ def create_text():
     text_data.align_y = "CENTER"
     text_data.extrude = 0.15
     text_data.size = 1.6
-    # Set a custom font (adjust the path as needed)
+    # Set a custom font: https://fonts.google.com/specimen/Oleo+Script+Swash+Caps
     font_path = os.path.join(
-        os.path.expanduser("~"), "Library/Fonts", "Comic Code Bold.otf"
+        os.path.expanduser("~"), "Library", "Fonts", "OleoScriptSwashCaps-Regular.ttf"
     )
     if os.path.exists(font_path):
         text_data.font = bpy.data.fonts.load(font_path)

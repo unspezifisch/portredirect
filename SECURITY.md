@@ -7,7 +7,7 @@
 | 1.x.x   | as soon at it's released |
 | < 1.0   | :x:                |
 
-THIS MEANS CURRENLTY NO GUARANTEES!
+THIS MEANS CURRENTLY NO GUARANTEES!
 
 ## Reporting a Vulnerability
 

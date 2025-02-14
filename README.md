@@ -76,6 +76,7 @@ portredirect_client \
 For secure operation, **always use a long and random pre-shared key (PSK)**.
 
 **Recommendation:**  
+
 - Use tools like [`pwgen`](https://linux.die.net/man/1/pwgen) or [`openssl rand`](https://www.openssl.org/docs/man1.1.1/man1/openssl-rand.html) to generate a robust PSK. For example:
 
   ```sh

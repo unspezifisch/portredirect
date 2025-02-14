@@ -3,6 +3,7 @@
         "jetmartin.bats",
         "foxundermoon.shell-format",
         "editorconfig.editorconfig",
-        "bluebrown.yamlfmt"
+        "bluebrown.yamlfmt",
+        "davidanson.vscode-markdownlint"
     ]
 }

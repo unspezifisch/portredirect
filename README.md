@@ -69,6 +69,7 @@ portredirect_client \
 - **`--quic-psk`:** Must match the server’s pre-shared key.
 
 > **Important:** The client needs to verify the identity of the QUIC server using its certificate. On startup, both the server and client generate their own certificates if they do not already exist. These certificates are stored as `.der` files in the `~/.config/portredirect` directory.
+>
 > **Action Required:** Start the server first to generate its certificate, then copy the contents of the server’s `~/.config/portredirect` directory to the corresponding location on the client machine. A Trust-On-First-Use (TOFU) mechanism may be implemented in the future to streamline this process.
 
 ### Security Notice: PSK Best Practices

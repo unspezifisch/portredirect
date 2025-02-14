@@ -1,9 +1,25 @@
+"""
+PortRedirect Logo Generator
+---------------------------
+This script generates a 3D logo scene for "PortRedirect" in Blender.
+It creates various scene elements including:
+    - A custom skybox with textured detail to provide practical reflections for gold.
+    - Background pipes and clouds to add depth.
+    - A hollow green pipe with improved reflective properties.
+    - Reflective gold text with subtle bump details.
+    - Custom lighting and camera setups.
+    - A world background with a dark Mario-blue tone.
+
+This script is intended to be run manually from the Scripting view in an empty Blender project.
+"""
+
 import bpy
 import os
 import random
 
 
 def cleanup_scene():
+    # Remove all existing objects from the scene.
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
 
@@ -57,7 +73,7 @@ def create_background_pipes():
             0.2,
             0.3,
             1,
-        )  # dark, off-color blue/grey
+        )  # dark off-color blue/grey
         dprincipled.inputs["Metallic"].default_value = 0.2
         dprincipled.inputs["Roughness"].default_value = 0.8
         outer_pipe.data.materials.append(dim_mat)
@@ -162,9 +178,10 @@ def assign_pipe_material(pipe):
     pipe_mat.use_nodes = True
     nodes = pipe_mat.node_tree.nodes
     principled = nodes.get("Principled BSDF")
-    # Set to a bright Mario-like green, non-metallic with a slight shine
+    # Set a bright Mario-like green
     principled.inputs["Base Color"].default_value = (0.0, 0.6, 0.0, 1)
-    principled.inputs["Metallic"].default_value = 0.0
+    # Increase metallic value to tint reflections with the green base color.
+    principled.inputs["Metallic"].default_value = 0.3
     principled.inputs["Roughness"].default_value = 0.2
     pipe.data.materials.append(pipe_mat)
 
@@ -194,38 +211,106 @@ def assign_text_material(text_obj):
     text_mat.use_nodes = True
     nodes = text_mat.node_tree.nodes
     links = text_mat.node_tree.links
-    output_node = nodes.get("Material Output")
-    principled_text = nodes.get("Principled BSDF")
+
+    # Get the Principled BSDF node (default in a new material)
+    principled = nodes.get("Principled BSDF")
 
     # Set a reflective gold color (Mario title screen gold, hex #FFD700)
-    principled_text.inputs["Base Color"].default_value = (1.0, 0.84, 0.0, 1)
-    principled_text.inputs["Metallic"].default_value = 0.7
-    principled_text.inputs["Roughness"].default_value = 0.1
-    if "Clearcoat" in principled_text.inputs:
-        principled_text.inputs["Clearcoat"].default_value = 0.2
-    if "Clearcoat Roughness" in principled_text.inputs:
-        principled_text.inputs["Clearcoat Roughness"].default_value = 0.05
+    principled.inputs["Base Color"].default_value = (1.0, 0.84, 0.0, 1)
+    principled.inputs["Metallic"].default_value = 0.7
+    principled.inputs["Roughness"].default_value = 0.1
 
-    # Add a subtle noise texture for gold variation
+    # Create a noise texture to drive a bump node for subtle surface details.
     noise_tex = nodes.new(type="ShaderNodeTexNoise")
-    noise_tex.inputs["Scale"].default_value = 100.0
+    noise_tex.inputs["Scale"].default_value = 200.0  # Higher scale for finer details
     noise_tex.inputs["Detail"].default_value = 16.0
 
-    color_ramp = nodes.new(type="ShaderNodeValToRGB")
-    color_ramp.color_ramp.elements[0].color = (1.0, 0.84, 0.0, 1)
-    color_ramp.color_ramp.elements[1].color = (0.9, 0.75, 0.0, 1)
+    # Create a bump node to add subtle imperfections.
+    bump_node = nodes.new(type="ShaderNodeBump")
+    bump_node.inputs["Strength"].default_value = 0.05  # Adjust for subtle variation
 
-    mix_shader = nodes.new(type="ShaderNodeMixRGB")
-    mix_shader.blend_type = "MULTIPLY"
-    mix_shader.inputs["Fac"].default_value = 0.2
-    links.new(noise_tex.outputs["Fac"], color_ramp.inputs["Fac"])
-    links.new(color_ramp.outputs["Color"], mix_shader.inputs[2])
-    mix_shader.inputs[1].default_value = principled_text.inputs[
-        "Base Color"
-    ].default_value
-    links.new(mix_shader.outputs["Color"], principled_text.inputs["Base Color"])
+    # Connect the noise texture to the bump node and then to the Principled BSDF.
+    links.new(noise_tex.outputs["Fac"], bump_node.inputs["Height"])
+    links.new(bump_node.outputs["Normal"], principled.inputs["Normal"])
 
+    # Assign the material to the text object.
     text_obj.data.materials.append(text_mat)
+
+
+def create_skybox():
+    # Create a large cube to act as a skybox (actually a plane in this case)
+    bpy.ops.mesh.primitive_cube_add(location=(0, 0, 50))
+    skybox = bpy.context.object
+    skybox.name = "Skybox"
+    # Scale up the cube so it forms a large plane behind the camera
+    skybox.scale = (100, 100, 1)
+
+    # Flip the normals so the inside faces are rendered
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.flip_normals()
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    # Create an unlit material for the skybox using an Emission shader
+    skybox_mat = bpy.data.materials.new(name="SkyboxMaterial")
+    skybox_mat.use_nodes = True
+    nodes = skybox_mat.node_tree.nodes
+    links = skybox_mat.node_tree.links
+
+    # Clear all existing nodes
+    for node in nodes:
+        nodes.remove(node)
+
+    # Create an Emission node (this will be our final shader)
+    emission_node = nodes.new(type="ShaderNodeEmission")
+    emission_node.location = (400, 0)
+    emission_node.inputs["Strength"].default_value = 1.0
+
+    # Create a Noise Texture node for texture detail
+    noise_node = nodes.new(type="ShaderNodeTexNoise")
+    noise_node.location = (-600, 0)
+    noise_node.inputs["Scale"].default_value = 20.0
+    noise_node.inputs["Detail"].default_value = 2.0
+
+    # Create a ColorRamp to map noise values to colors simulating leaves on a wood-like background
+    color_ramp = nodes.new(type="ShaderNodeValToRGB")
+    color_ramp.location = (-400, 0)
+    # Set left stop (most of the area) to a light grey (wood-like base)
+    color_ramp.color_ramp.elements[0].position = 0.4
+    color_ramp.color_ramp.elements[0].color = (0.8, 0.8, 0.8, 1)
+    # Set right stop to a dark green to simulate sparse leaves
+    color_ramp.color_ramp.elements[1].position = 0.6
+    color_ramp.color_ramp.elements[1].color = (0.0, 0.3, 0.0, 1)
+
+    # Create a MixRGB node to blend our base sky-blue with the noise-driven pattern
+    mix_node = nodes.new(type="ShaderNodeMixRGB")
+    mix_node.location = (0, 0)
+    mix_node.blend_type = "MIX"
+    # Color1: the base sky-blue color
+    mix_node.inputs["Color1"].default_value = (0.6, 0.8, 1.0, 1)
+    # Adjust Fac to control how strongly the noise pattern shows through
+    mix_node.inputs["Fac"].default_value = 0.3
+
+    # Create the Material Output node
+    output_node = nodes.new(type="ShaderNodeOutputMaterial")
+    output_node.location = (600, 0)
+
+    # Connect nodes:
+    # Noise -> ColorRamp
+    links.new(noise_node.outputs["Fac"], color_ramp.inputs["Fac"])
+    # ColorRamp -> MixRGB Color2
+    links.new(color_ramp.outputs["Color"], mix_node.inputs["Color2"])
+    # MixRGB -> Emission Color
+    links.new(mix_node.outputs["Color"], emission_node.inputs["Color"])
+    # Emission -> Material Output
+    links.new(emission_node.outputs["Emission"], output_node.inputs["Surface"])
+
+    # Note: In Eevee, Screen Space Reflections (SSR) may not fully capture these detailed textures.
+    # In the shader view this skybox looks great, but the final render might not display the detail
+    # until Eevee improves or SSR settings are adjusted.
+
+    # Assign the material to the skybox object
+    skybox.data.materials.append(skybox_mat)
 
 
 def setup_lighting():
@@ -235,10 +320,33 @@ def setup_lighting():
     light_area.data.energy = 2000
     light_area.data.size = 100
 
+    # Create an Area Light around the Text with increased energy
+    bpy.ops.object.light_add(type="AREA", location=(0, -5, 3))
+    light_area = bpy.context.object
+    light_area.data.energy = 100
+    light_area.data.size = 10
+    # and below it
+    bpy.ops.object.light_add(type="AREA", location=(0, -5, -3))
+    light_area = bpy.context.object
+    light_area.data.energy = 50
+    light_area.data.size = 10
+
+    # Left text highlight spot
+    bpy.ops.object.light_add(type="AREA", location=(-2, -1.5, 2))
+    light_area = bpy.context.object
+    light_area.data.energy = 30
+    light_area.data.size = 5
+
+    # Right text highlight spot
+    bpy.ops.object.light_add(type="AREA", location=(2, -1.5, 2))
+    light_area = bpy.context.object
+    light_area.data.energy = 50
+    light_area.data.size = 5
+
     # Create a Point Light with increased energy
-    bpy.ops.object.light_add(type="POINT", location=(-5, -7, 10))
+    bpy.ops.object.light_add(type="POINT", location=(-20, -7, 10))
     light_point = bpy.context.object
-    light_point.data.energy = 7000
+    light_point.data.energy = 9000
 
 
 def setup_camera():
@@ -269,17 +377,10 @@ def setup_world_background():
 def setup_render_settings(output_path):
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE_NEXT"
-    if hasattr(scene, "eevee_next"):
-        scene.eevee_next.use_bloom = True
-        scene.eevee_next.bloom_intensity = 0.3  # increased intensity
-        scene.eevee_next.bloom_threshold = 0.5  # lower threshold
-        scene.eevee_next.bloom_radius = 6.5
-    else:
-        print("Eevee Next bloom settings not found, skipping bloom configuration.")
 
     scene.view_settings.view_transform = "Filmic"
     scene.view_settings.look = "None"
-    scene.view_settings.exposure = 0.95
+    scene.view_settings.exposure = 1.2
 
     scene.render.resolution_x = 1920
     scene.render.resolution_y = 1080
@@ -290,6 +391,7 @@ def setup_render_settings(output_path):
 def main():
     cleanup_scene()
     setup_random_seed(42)
+    create_skybox()
     create_background_pipes()
     create_clouds()
     pipe = create_hollow_pipe()

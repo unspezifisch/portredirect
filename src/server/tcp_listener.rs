@@ -3,7 +3,6 @@
 // License: GPL-3.0-only
 
 use crate::app_data::ServerAppData;
-use crate::quic::transport::GenericQuicStream;
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
 
 use anyhow::Result;
@@ -45,17 +44,16 @@ pub async fn handle_tcp_listener(
         };
 
         // Open a bidirectional QUIC stream.
-        let (quic_send, quic_recv) = match quic_conn.open_bi().await {
+        let quic_stream = match quic_conn.open_bi().await {
             Ok(stream) => stream,
             Err(e) => {
                 error!("Failed to open QUIC bidirectional stream: {}", e);
                 continue;
             }
         };
-        let stream_id = quic_send.id();
+        let stream_id = quic_stream.0.id(); // it's the same id for both directions
         debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
-        let quic_stream = GenericQuicStream::new(quic_send, quic_recv);
         let connections = active_connections.clone();
 
         // Spawn a new task to handle forwarding between TCP and QUIC.

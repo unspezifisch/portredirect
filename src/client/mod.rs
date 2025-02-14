@@ -5,4 +5,4 @@
 pub mod auth;
 pub mod metrics;
 pub mod server_handler;
-pub mod tcp;
+pub mod tcp_forwarder;

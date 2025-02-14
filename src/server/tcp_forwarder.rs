@@ -4,37 +4,39 @@
 
 use crate::forward::forward_bidirectional;
 use crate::metrics_helper::DummyCounter;
-use crate::quic::transport::GenericQuicStream;
 
 use anyhow::Result;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, instrument};
 
 /// Handles an incoming TCP connection and forwards it to a QUIC stream.
 #[instrument(skip(tcp_stream, quic_stream))]
-pub async fn forward_tcp_to_quic_stream(
+pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
     mut tcp_stream: tokio::net::TcpStream,
-    mut quic_stream: GenericQuicStream,
-) -> Result<()> {
-    // Render the display strings before calling forward_bidirectional.
-    let stream_id_quic = format!("{}", quic_stream);
-
+    mut quic_stream: QuicStreamType,
+) -> Result<()>
+where
+    QuicStreamType: AsyncRead + AsyncWrite + Unpin + std::fmt::Display,
+{
     // HACK until the server gets metrics - Create dummy counters for both directions.
     let dummy_counter_a = DummyCounter::new();
     let dummy_counter_b = DummyCounter::new();
 
-    // Now pass the strings. The mutable borrow of `quic_stream` is separate from the owned strings.
+    let stream_id = quic_stream.to_string();
+    debug!(
+        "Starting QUIC->TCP stream handler, stream id {}",
+        stream_id.clone()
+    );
+
     forward_bidirectional(
         &mut tcp_stream,
         &mut quic_stream,
-        stream_id_quic.clone(),
+        stream_id.clone(),
         &dummy_counter_a,
         &dummy_counter_b,
     )
     .await?;
 
-    debug!(
-        "Closed QUIC stream for TCP connection (stream id {})",
-        stream_id_quic
-    );
+    debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
     Ok(())
 }

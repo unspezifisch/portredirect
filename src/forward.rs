@@ -5,7 +5,7 @@
 use std::error::Error;
 
 use anyhow::{Context, Result};
-use tokio::io::{copy_bidirectional, AsyncRead, AsyncWrite};
+use tokio::io::{copy_bidirectional_with_sizes, AsyncRead, AsyncWrite};
 use tracing::{info, warn};
 
 use crate::metrics_helper::MetricsCounter;
@@ -29,7 +29,8 @@ where
     CounterA: MetricsCounter,
     CounterB: MetricsCounter,
 {
-    let result = copy_bidirectional(a, b).await;
+    let buf_size = crate::PortRedirectProtocol::QUIC_STREAM_READ_BUFFER_SIZE;
+    let result = copy_bidirectional_with_sizes(a, b, buf_size, buf_size).await;
 
     match result {
         Ok((bytes_a, bytes_b)) => {

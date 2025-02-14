@@ -2,19 +2,16 @@
 //
 // License: GPL-3.0-only
 
-use crate::client::metrics::{
-    CONNECTIONS_ACCEPTED, KEEPALIVE_ERRORS, SERVER_CONNECTIONS_GRACEFULLY_CLOSED_TOTAL,
-    SERVER_CONNECTIONS_OPENED_TOTAL, TCP_FORWARDING_ERRORS,
-};
+use crate::app_data::ClientAppData;
+use crate::client::metrics::*;
 use crate::protocol::keepalive::run_keepalive_client_loop;
 use crate::quic::client::ClientConfig;
-use crate::{app_data::ClientAppData, quic::transport::GenericQuicStream};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
 use super::auth::handle_quic_auth_client_side;
-use super::tcp::forward_tcp_to_quic_stream;
+use super::tcp_forwarder::forward_tcp_to_quic_stream;
 
 /// Handles the connection to the QUIC server, authenticates and keeps it alive.
 /// Called directly by run_quic_client.
@@ -41,11 +38,10 @@ pub async fn handle_quic_server_connection(
     });
 
     // Accept bidirectional QUIC streams for new forwarded connections.
-    while let Ok((send, recv)) = conn.accept_bi().await {
+    while let Ok(quic_stream) = conn.accept_bi().await {
         info!("Opened QUIC stream for new forwarded connection");
         CONNECTIONS_ACCEPTED.inc();
 
-        let quic_stream = GenericQuicStream::new(send, recv);
         let config = Arc::clone(&config);
         tokio::spawn(async move {
             if let Err(e) = forward_tcp_to_quic_stream(config, quic_stream).await {

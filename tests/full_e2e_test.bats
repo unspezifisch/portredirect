@@ -2,13 +2,20 @@
 # This test checks that portredirect runs and doesn't blatantly crash or exits with an error.
 
 setup() {
+  LOG_NAME="prrs_full_e2e_test"
+
+  # Create log files base dir
+  mkdir -p ./testlogs
+  LOG_DIR=$(mktemp -p ./testlogs -d "${LOG_NAME}_$(date +%Y%m%d-%H%M%S).XXXXXX")
+
+  # Build the project
   cargo build
 
   # Start portredirect server in background
   RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server \
     --local-host 127.0.0.1 --local-port 10001 \
     --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
-    &
+    2>&1 >"$LOG_DIR/portredirect_server.log" &
   SERVER_PID=$!
 
   # Wait a short time for the server to be ready
@@ -19,11 +26,12 @@ setup() {
     --destination-host 127.0.0.1 --destination-port 5201 \
     --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
     --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
-    &
+    2>&1 >"$LOG_DIR/portredirect_client.log" &
   CLIENT_PID=$!
 
   # Start iperf3 server in background
-  iperf3 -s >iperf_server.log &
+  iperf3 -s \
+    2>&1 >"$LOG_DIR/iperf_server.log" &
   IPERF_PID=$!
 
   # Wait for services to start up

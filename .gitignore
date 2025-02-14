@@ -1,7 +1,2 @@
 /target
-foo*/
-client.log
-iperf_server.log
-metrics*.log
-server.log
-received_testfile_*
+/testlogs

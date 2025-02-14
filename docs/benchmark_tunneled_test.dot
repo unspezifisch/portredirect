@@ -1,5 +1,5 @@
 digraph tunneled_test {
-  rankdir=LR;
+  rankdir=TB;
   node [shape=box, style=rounded];
   
   iperf3_client [label="iperf3 Client\n(connects to port 10001)"];

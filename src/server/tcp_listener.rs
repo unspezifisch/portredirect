@@ -3,13 +3,15 @@
 // License: GPL-3.0-only
 
 use crate::app_data::ServerAppData;
+use crate::bi_stream::BiStream;
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::{debug, error, instrument};
 
 /// Accepts TCP connections and bridges them to QUIC.
@@ -44,14 +46,13 @@ pub async fn handle_tcp_listener(
         };
 
         // Open a bidirectional QUIC stream.
-        let quic_stream = match quic_conn.open_bi().await {
-            Ok(stream) => stream,
-            Err(e) => {
-                error!("Failed to open QUIC bidirectional stream: {}", e);
-                continue;
-            }
-        };
-        let stream_id = quic_stream.0.id(); // it's the same id for both directions
+        let (send, recv) = quic_conn
+            .open_bi()
+            .await
+            .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
+
+        let stream_id = recv.id(); // it's the same id for both directions
+        let quic_stream = BiStream::new(recv.compat(), send.compat_write());
         debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
         let connections = active_connections.clone();

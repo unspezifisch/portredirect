@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -59,5 +60,14 @@ impl<R: AsyncBufRead + Unpin, W: Unpin> AsyncBufRead for BiStream<R, W> {
     fn consume(self: Pin<&mut Self>, amt: usize) {
         // Delegate to the inner buffered reader
         Pin::new(&mut self.get_mut().read).consume(amt)
+    }
+}
+
+impl<R, W> fmt::Display for BiStream<R, W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "BiStream {{ read_id: XX, write_id: XX }}",
+        )
     }
 }

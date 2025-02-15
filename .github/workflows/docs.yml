@@ -17,7 +17,9 @@ jobs:
           toolchain: stable
           override: true
       - name: Install Ubuntu dependencies
-        run: apt-get install update && apt-get install -y graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
       - name: Install Pip dependencies
         run: pip install -r tests/requirements.txt
       - name: Install Cargo dependencies

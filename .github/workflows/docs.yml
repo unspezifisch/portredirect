@@ -25,7 +25,7 @@ jobs:
           ls -l docs/
           sha256sum docs/* | tee checksums-1.txt
       - name: Build documentation
-        run: make doc
+        run: make docs
       - name: Make checksums of built documentation files
         run: |
           ls -l docs/

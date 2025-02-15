@@ -456,8 +456,10 @@ def summarize_list(times_list):
     return avg, min_val, max_val, var
 
 
-def print_benchmark_summary(overall_elapsed: float):
-    """Print a summary of the benchmark performance and profiling data."""
+def print_benchmark_summary(
+    overall_elapsed: float, workers: int, block_size: int, total_bytes: int
+):
+    """Print a detailed summary of the benchmark performance and profiling data."""
     total_up_str = format_mb(global_total_up_bytes)
     total_down_str = format_mb(global_total_down_bytes)
     total_up_mb = global_total_up_bytes / (1024 * 1024)
@@ -467,6 +469,11 @@ def print_benchmark_summary(overall_elapsed: float):
 
     logging.info("\n========== Benchmark Summary ==========")
     logging.info("Overall benchmark duration: %.2f s", overall_elapsed)
+    logging.info("Benchmark parameters:")
+    logging.info(" - Worker connections: %d", workers)
+    logging.info(" - Listener connections accepted: %d", connection_counter)
+    logging.info(" - Block size: %d bytes", block_size)
+    logging.info(" - Total bytes per direction per connection: %d bytes", total_bytes)
     logging.info(
         "Total UP:   %s MB  (avg speed: %.2f MB/s)", total_up_str, overall_up_rate
     )
@@ -496,6 +503,25 @@ def print_benchmark_summary(overall_elapsed: float):
             max_rate,
             var_rate,
         )
+
+        # Identify the fastest and slowest connection samples (by transfer rate)
+        fastest_rate = max(connection_transfer_rates)
+        slowest_rate = min(connection_transfer_rates)
+        fastest_index = connection_transfer_rates.index(fastest_rate)
+        slowest_index = connection_transfer_rates.index(slowest_rate)
+        fastest_time = connection_transfer_times[fastest_index]
+        slowest_time = connection_transfer_times[slowest_index]
+        logging.info(
+            "Fastest connection sample: transfer time = %.2f s, rate = %.2f MB/s",
+            fastest_time,
+            fastest_rate,
+        )
+        logging.info(
+            "Slowest connection sample: transfer time = %.2f s, rate = %.2f MB/s",
+            slowest_time,
+            slowest_rate,
+        )
+
     if connection_setup_times:
         avg_setup, min_setup, max_setup, var_setup = summarize_list(
             connection_setup_times
@@ -576,7 +602,7 @@ async def async_main(
     except asyncio.CancelledError:
         logging.info("TCP listener cancelled.")
 
-    print_benchmark_summary(overall_elapsed)
+    print_benchmark_summary(overall_elapsed, workers, block_size, total_bytes)
 
     if error_occurred:
         logging.error("Benchmark completed with errors.")

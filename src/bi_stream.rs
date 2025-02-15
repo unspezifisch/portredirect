@@ -4,7 +4,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub struct BiStream<R, W> {
     pub read: R,
@@ -47,19 +47,6 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for BiStream<R, W> {
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.get_mut().write).poll_shutdown(cx)
-    }
-}
-
-// AsyncBufRead implementation delegates to the inner `read`
-impl<R: AsyncBufRead + Unpin, W: Unpin> AsyncBufRead for BiStream<R, W> {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        // Delegate to the inner buffered reader
-        Pin::new(&mut self.get_mut().read).poll_fill_buf(cx)
-    }
-
-    fn consume(self: Pin<&mut Self>, amt: usize) {
-        // Delegate to the inner buffered reader
-        Pin::new(&mut self.get_mut().read).consume(amt)
     }
 }
 

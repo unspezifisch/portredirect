@@ -1264,6 +1264,7 @@ dependencies = [
  "clap",
  "dirs",
  "env_logger",
+ "futures-io",
  "getrandom 0.3.1",
  "hex",
  "lazy_static",

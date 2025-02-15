@@ -1,9 +1,7 @@
 use crate::PortRedirectProtocol;
 
-use anyhow::Result;
-use tokio::io::{
-    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader,
-};
+use anyhow::{Error, Result};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::time::{interval, timeout, Duration};
 use tracing::{info, warn};
 
@@ -82,24 +80,47 @@ where
 /// incoming PING messages from the remote peer. When a PING is received,
 /// the server replies with a PONG. Any error (read/write, unexpected message,
 /// timeout, or connection close) causes the loop to exit gracefully.
+///
+/// Runs the keepalive loop on the server side.
+///
+/// Instead of sending periodic PING messages, the server now waits for
+/// incoming PING messages from the remote peer. When a PING is received,
+/// the server replies with a PONG. Any error (read/write, unexpected message,
+/// timeout, or connection close) causes the loop to exit gracefully.
 pub async fn run_keepalive_server_loop<T>(mut auth_stream: T) -> Result<()>
 where
-    T: AsyncRead + AsyncWrite + AsyncBufRead + Unpin,
+    T: AsyncRead + AsyncWrite + Unpin,
 {
     loop {
-        // Wait for an incoming message (expected to be PING).
+        // We'll build the message manually by reading one byte at a time.
         let mut buf = Vec::with_capacity(16);
-        match timeout(
-            KEEP_ALIVE_INTERVAL + READ_TIMEOUT,
-            auth_stream.read_until(b'\n', &mut buf),
-        )
-        .await
-        {
-            Ok(Ok(0)) => {
-                warn!("Connection closed by remote during keepalive");
-                break;
+
+        // Read until newline is encountered or connection is closed.
+        let read_result = timeout(KEEP_ALIVE_INTERVAL + READ_TIMEOUT, async {
+            let mut byte = [0; 1];
+            loop {
+                let n = auth_stream.read(&mut byte).await?;
+                if n == 0 {
+                    // Connection closed.
+                    break;
+                }
+                buf.push(byte[0]);
+                if byte[0] == b'\n' {
+                    break;
+                }
             }
-            Ok(Ok(_)) => {
+            Ok::<(), Error>(())
+        })
+        .await;
+
+        match read_result {
+            Ok(Ok(())) => {
+                if buf.is_empty() {
+                    // Connection closed.
+                    warn!("Connection closed by remote during keepalive");
+                    break;
+                }
+
                 if buf == PING_MESSAGE {
                     info!("Received PING, sending PONG");
                     if let Err(e) = auth_stream.write_all(PONG_MESSAGE).await {

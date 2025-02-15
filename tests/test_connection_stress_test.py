@@ -9,14 +9,19 @@ import logging
 import time
 import unittest
 from click.testing import CliRunner
-from functools import partial
 
 # Import the benchmark module.
 import connection_stress_test as benchmark
 
 
 class TestBenchmark(unittest.IsolatedAsyncioTestCase):
+
     def setUp(self):
+        # Ignore ResourceWarning from unclosed sockets.
+        import warnings
+
+        warnings.simplefilter("ignore", ResourceWarning)
+
         # Reset the global state in the benchmark module.
         benchmark.global_total_up_bytes = 0
         benchmark.global_total_down_bytes = 0
@@ -90,17 +95,17 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
         total_bytes = 1024
         block_size = 256
 
-        # Create a server handler that runs exercise_connection.
         async def server_handler(reader, writer):
-            await benchmark.exercise_connection(
-                reader, writer, total_bytes, block_size, "SERVER"
-            )
+            try:
+                await benchmark.exercise_connection(
+                    reader, writer, total_bytes, block_size, "SERVER"
+                )
+            finally:
+                await benchmark.close_writer(writer)
 
-        # Start a server.
         server = await asyncio.start_server(server_handler, "127.0.0.1", 0)
         addr = server.sockets[0].getsockname()
 
-        # Client connects and runs exercise_connection.
         client_reader, client_writer = await asyncio.open_connection(*addr)
         client_task = asyncio.create_task(
             benchmark.exercise_connection(
@@ -108,12 +113,10 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        # Wait for client task to complete.
         await client_task
         server.close()
         await server.wait_closed()
 
-        # In this full‑duplex test each side sends total_bytes so the globals should sum to 2*total_bytes.
         self.assertEqual(benchmark.global_total_up_bytes, 2 * total_bytes)
         self.assertEqual(benchmark.global_total_down_bytes, 2 * total_bytes)
 
@@ -131,15 +134,14 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
         self.assertLess(elapsed, 1.0)  # should complete in under 1 second
 
     def test_print_benchmark_summary(self):
-        # Capture logging output.
         log_stream = io.StringIO()
         handler = logging.StreamHandler(log_stream)
         formatter = logging.Formatter("%(message)s")
         handler.setFormatter(formatter)
         logger = logging.getLogger()
+        logger.setLevel(logging.INFO)  # Ensure INFO-level messages are captured.
         logger.addHandler(handler)
 
-        # Set some globals to simulate benchmark data.
         benchmark.global_total_up_bytes = 1024 * 1024
         benchmark.global_total_down_bytes = 2 * 1024 * 1024
         benchmark.connection_transfer_times[:] = [1.0, 2.0, 1.5]
@@ -178,17 +180,17 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
         self.assertIn("\033[", formatted)
 
     def test_cli(self):
-        # Test the CLI entry point using Click's CliRunner.
         runner = CliRunner()
 
-        # Patch async_main with a dummy coroutine that does nothing.
         async def dummy_async_main(*args, **kwargs):
+            import click
+
+            click.echo("Benchmark complete.")
             return
 
         original_async_main = benchmark.async_main
         benchmark.async_main = dummy_async_main
 
-        # Invoke the CLI with a small configuration.
         result = runner.invoke(
             benchmark.cli,
             [
@@ -208,7 +210,6 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
                 "5201",
             ],
         )
-        # Restore the original async_main.
         benchmark.async_main = original_async_main
 
         self.assertEqual(result.exit_code, 0)

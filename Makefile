@@ -82,6 +82,17 @@ lint:
 		echo "Black is not installed. Skipping Python formatting check."; \
 	fi
 
+# Automatically fix lint issues.
+lint_fix:
+	@echo "Running cargo fix to automatically apply Rust suggestions..."
+	@cargo fix --allow-dirty --allow-staged
+	@echo "Running black to auto-format Python files in utils and tests..."
+	@if command -v black >/dev/null 2>&1; then \
+		black utils/*.py tests/*.py; \
+	else \
+		echo "Black is not installed. Skipping Python formatting fix."; \
+	fi
+	
 # ------------------------------
 # Test targets.
 # ------------------------------

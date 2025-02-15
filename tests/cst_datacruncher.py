@@ -10,7 +10,7 @@ Dependencies (Ubuntu/Debian):
 
 Usage:
   python3 cst_datacruncher.py [OPTIONS] FILES...
-  
+
 Example:
   python3 cst_datacruncher.py -o ./plots testlogs/prrs_full_e2e_connection_stress_test_*/cst_*
 

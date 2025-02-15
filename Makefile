@@ -51,8 +51,8 @@ all: test release
 docs:
 	@echo "Analyzing Cargo module..."
 	@./utils/docs-generate-cargo-modules-tree.sh
-	@echo "Render GraphViz graphs."
-	@./utils/docs-render-diagrams.sh
+	@echo "Render GraphViz graphs for Docs."
+	@./utils/render-diagrams.sh ./docs/*.dot
 
 # ------------------------------
 # Build targets.

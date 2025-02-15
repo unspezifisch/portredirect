@@ -134,6 +134,7 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
         self.assertLess(elapsed, 1.0)  # should complete in under 1 second
 
     def test_print_benchmark_summary(self):
+        # Set up a log stream to capture logging output.
         log_stream = io.StringIO()
         handler = logging.StreamHandler(log_stream)
         formatter = logging.Formatter("%(message)s")
@@ -142,24 +143,38 @@ class TestBenchmark(unittest.IsolatedAsyncioTestCase):
         logger.setLevel(logging.INFO)  # Ensure INFO-level messages are captured.
         logger.addHandler(handler)
 
-        benchmark.global_total_up_bytes = 1024 * 1024
-        benchmark.global_total_down_bytes = 2 * 1024 * 1024
+        # Set global benchmark values.
+        benchmark.global_total_up_bytes = 1024 * 1024  # 1 MB
+        benchmark.global_total_down_bytes = 2 * 1024 * 1024  # 2 MB
         benchmark.connection_transfer_times[:] = [1.0, 2.0, 1.5]
         benchmark.connection_transfer_rates[:] = [1.0, 0.5, 0.75]
         benchmark.connection_setup_times[:] = [0.1, 0.2]
         benchmark.connection_teardown_times[:] = [0.05, 0.07]
+        benchmark.connection_counter = 42  # Simulate 42 listener connections accepted.
 
-        benchmark.print_benchmark_summary(5.0)
+        # Set parameters for the benchmark.
+        workers = 10
+        block_size = 1024  # bytes
+        total_bytes = 2048  # bytes per direction per connection
+
+        # Call the updated summary function with all required parameters.
+        benchmark.print_benchmark_summary(5.0, workers, block_size, total_bytes)
 
         handler.flush()
         output = log_stream.getvalue()
         self.assertIn("Overall benchmark duration:", output)
+        self.assertIn("Benchmark parameters:", output)
+        self.assertIn(" - Worker connections:", output)
+        self.assertIn(" - Listener connections accepted:", output)
+        self.assertIn(" - Block size:", output)
+        self.assertIn(" - Total bytes per direction per connection:", output)
         self.assertIn("Total UP:", output)
         self.assertIn("Total DOWN:", output)
         self.assertIn("Connection transfer time", output)
         self.assertIn("Connection setup time", output)
         self.assertIn("Connection teardown time", output)
 
+        # Clean up: remove our log handler.
         logger.removeHandler(handler)
 
     def test_colored_formatter(self):

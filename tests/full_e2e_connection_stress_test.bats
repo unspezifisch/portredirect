@@ -14,7 +14,7 @@ setup() {
 
     # Start portredirect server in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server \
-        --local-host 127.0.0.1 --local-port 10003 \
+        --local-host 127.0.0.1 --local-port 1111 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
@@ -24,7 +24,7 @@ setup() {
 
     # Start portredirect client in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_client \
-        --destination-host 127.0.0.1 --destination-port 5201 \
+        --destination-host 127.0.0.1 --destination-port 2222 \
         --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
         --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
         --provide-metrics \
@@ -37,7 +37,7 @@ setup() {
 
 teardown() {
     get_metrics "$LOG_DIR/portredirect_client_metrics.log"
-    kill $SERVER_PID $CLIENT_PID || true
+    kill $SERVER_PID $CLIENT_PID
 }
 
 pr_log_error_check() {
@@ -69,8 +69,8 @@ run_stress_test() {
         server_port=1234
         listener_port=1234
     else
-        server_port=10003
-        listener_port=5201
+        server_port=1111
+        listener_port=2222
     fi
 
     local log_file="$LOG_DIR/cst_${mode}_${suffix}.log"

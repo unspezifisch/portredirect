@@ -26,10 +26,11 @@ pub async fn handle_quic_client_auth(
         .open_bi()
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
-    debug!("opened bidi channel for AUTH with stream id {}", send.id());
+    let stream_id = recv.id();
+    debug!("opened bidi channel for AUTH with stream id {}", stream_id);
 
     // Convert the futures-based Quinn streams into Tokio-compatible streams.
-    let mut bi_stream = BiStream::new(recv.compat(), send.compat_write());
+    let mut bi_stream = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
 
     match server_authenticate(
         &mut bi_stream,

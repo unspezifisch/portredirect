@@ -52,7 +52,7 @@ pub async fn handle_tcp_listener(
             .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
 
         let stream_id = recv.id(); // it's the same id for both directions
-        let quic_stream = BiStream::new(recv.compat(), send.compat_write());
+        let quic_stream = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
         debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
         let connections = active_connections.clone();

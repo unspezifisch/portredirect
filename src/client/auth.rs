@@ -22,7 +22,8 @@ pub async fn handle_quic_auth_client_side(
     // Client auth loop. Runs until server is happy.
     if let Ok((send, recv)) = conn.accept_bi().await {
         let stream_id = recv.id();
-        let mut bi_stream = BiStream::new(recv.compat(), send.compat_write());
+        let mut bi_stream =
+            BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
         debug!("opened bidi channel for AUTH with stream {}", stream_id);
 
         match client_authenticate(&mut bi_stream, config.app_data.connection_auth_psk.clone()).await

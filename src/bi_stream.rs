@@ -1,6 +1,5 @@
 use std::{
-    fmt,
-    io,
+    fmt, io,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -9,11 +8,16 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 pub struct BiStream<R, W> {
     pub read: R,
     pub write: W,
+    pub name: String,
 }
 
 impl<R, W> BiStream<R, W> {
-    pub fn new(read: R, write: W) -> Self {
-        Self { read, write }
+    pub fn new(read: R, write: W, name: String) -> Self {
+        Self {
+            read,
+            write,
+            name: name.to_string(),
+        }
     }
 }
 
@@ -52,9 +56,6 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for BiStream<R, W> {
 
 impl<R, W> fmt::Display for BiStream<R, W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "BiStream {{ read_id: XX, write_id: XX }}",
-        )
+        write!(f, "BiStream-{}", self.name,)
     }
 }

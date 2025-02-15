@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use std::{path::PathBuf, time::Duration};
 
 pub mod app_data;
+pub mod bi_stream;
 pub mod client;
 pub mod forward;
 pub mod metrics_helper; 

@@ -1,7 +1,9 @@
 use crate::PortRedirectProtocol;
 
 use anyhow::Result;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader,
+};
 use tokio::time::{interval, timeout, Duration};
 use tracing::{info, warn};
 
@@ -23,7 +25,7 @@ const PONG_MESSAGE: &[u8] = b"PONG\n";
 /// causes the loop to exit gracefully.
 pub async fn run_keepalive_client_loop<T>(mut auth_stream: T) -> Result<()>
 where
-    T: AsyncReadExt + AsyncWriteExt + Unpin,
+    T: AsyncRead + AsyncWrite + Unpin,
 {
     let mut tick_interval = interval(KEEP_ALIVE_INTERVAL);
     let mut pong_count = 0usize;
@@ -82,7 +84,7 @@ where
 /// timeout, or connection close) causes the loop to exit gracefully.
 pub async fn run_keepalive_server_loop<T>(mut auth_stream: T) -> Result<()>
 where
-    T: AsyncReadExt + AsyncWriteExt + AsyncBufReadExt + Unpin,
+    T: AsyncRead + AsyncWrite + AsyncBufRead + Unpin,
 {
     loop {
         // Wait for an incoming message (expected to be PING).

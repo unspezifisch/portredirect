@@ -2,13 +2,14 @@
 //
 // License: GPL-3.0-only
 
-use crate::app_data::ServerAppData;
 use crate::protocol::auth::server_authenticate;
 use crate::protocol::utils::SystemTimeProvider;
 use crate::quic::server::ServerConfig;
+use crate::{app_data::ServerAppData, bi_stream::BiStream};
 
 use anyhow::{anyhow, Result};
 use std::sync::Arc;
+use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, FuturesAsyncWriteCompatExt};
 use tracing::{debug, error, info, instrument};
 
 // Authenticates the PR QUIC client to us, the server.
@@ -17,18 +18,21 @@ use tracing::{debug, error, info, instrument};
 pub async fn handle_quic_client_auth(
     config: Arc<ServerConfig<Arc<ServerAppData>>>,
     conn: quinn::Connection,
-) -> Result<(quinn::SendStream, quinn::RecvStream)> {
+) -> Result<BiStream<Compat<quinn::RecvStream>, Compat<quinn::SendStream>>> {
     debug!("Authenticating PR QUIC client");
 
     // An unknown client just connected, they need to authenticate or get kicked.
-    let stream = conn
+    let (send, recv) = conn
         .open_bi()
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
-    debug!("opened bidi channel for AUTH with stream id {}", stream.0.id());
+    debug!("opened bidi channel for AUTH with stream id {}", send.id());
+
+    // Convert the futures-based Quinn streams into Tokio-compatible streams.
+    let mut bi_stream = BiStream::new(recv.compat(), send.compat_write());
 
     match server_authenticate(
-        &mut stream,
+        &mut bi_stream,
         config.app_data.connection_auth_psk.to_owned(),
         &SystemTimeProvider,
     )
@@ -43,5 +47,5 @@ pub async fn handle_quic_client_auth(
         }
     }
 
-    Ok(stream)
+    Ok(bi_stream)
 }

@@ -3,11 +3,13 @@
 // License: GPL-3.0-only
 
 use crate::app_data::ClientAppData;
+use crate::bi_stream::BiStream;
 use crate::client::metrics::*;
 use crate::protocol::keepalive::run_keepalive_client_loop;
 use crate::quic::client::ClientConfig;
 use anyhow::{Context, Result};
 use std::sync::Arc;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
 
 use super::auth::handle_quic_auth_client_side;
@@ -38,13 +40,19 @@ pub async fn handle_quic_server_connection(
     });
 
     // Accept bidirectional QUIC streams for new forwarded connections.
-    while let Ok(quic_stream) = conn.accept_bi().await {
-        info!("Opened QUIC stream for new forwarded connection");
+    while let Ok((send, recv)) = conn.accept_bi().await {
         CONNECTIONS_ACCEPTED.inc();
+
+        let stream_id = recv.id();
+        let mut bi_stream = BiStream::new(recv.compat(), send.compat_write());
+        info!(
+            "Opened QUIC stream for new forwarded connection, id {}",
+            stream_id
+        );
 
         let config = Arc::clone(&config);
         tokio::spawn(async move {
-            if let Err(e) = forward_tcp_to_quic_stream(config, quic_stream).await {
+            if let Err(e) = forward_tcp_to_quic_stream(config, bi_stream).await {
                 TCP_FORWARDING_ERRORS.inc();
                 warn!("Error handling QUIC stream: {}", e);
             }

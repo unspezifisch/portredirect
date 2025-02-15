@@ -23,7 +23,7 @@ jobs:
       - name: Install Ubuntu packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats figlet
       - name: Install Pip dependencies
         run: pip install -r tests/requirements.txt
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
@@ -32,6 +32,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
           limit-access-to-actor: true
+      # It has no sense to run this benchmark if its test is failing
       - name: Run Python Unit Tests
         run: make test_python
       - name: Run Big Benchmark
@@ -42,11 +43,25 @@ jobs:
         if: always()
         run: |
           echo "========== testlogs =========="
-          tail -n+0 ./testlogs/*/* || true
+          i=0
+          for subdir in ./testlogs/*; do
+            echo
+            figlet "LOG $i"
+            echo "Test log dir: $subdir"
+            tail -n+0 "$subdir"/* || true
+            i=$((i + 1))
+          done
+      
+          echo
           echo "========== bats-logs =========="
+          figlet "BATS LOGS"
           tail -n+0 ./bats-logs/* || true
+      
+          echo
           echo "========== testplots =========="
+          figlet "PLOTS"
           ls -l testplots || true
+      
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         if: always()

@@ -28,6 +28,12 @@ class TestTransferMetricsParsing(unittest.TestCase):
         """Test parse_transfer_metrics with the first sample message."""
         result = parse_transfer_metrics(MESSAGE1)
         self.assertIsNotNone(result, "Parsing should return a tuple, not None.")
+        # Check that the result tuple has the expected length.
+        self.assertEqual(
+            len(result),
+            len(EXPECTED1),
+            f"Expected result tuple length to be {len(EXPECTED1)} but got {len(result)}",
+        )
         # Compare each float value using almost equal, to handle minor float imprecisions.
         for expected_value, result_value in zip(EXPECTED1, result):
             self.assertAlmostEqual(
@@ -41,6 +47,12 @@ class TestTransferMetricsParsing(unittest.TestCase):
         """Test parse_transfer_metrics with the second sample message."""
         result = parse_transfer_metrics(MESSAGE2)
         self.assertIsNotNone(result, "Parsing should return a tuple, not None.")
+        # Check that the result tuple has the expected length.
+        self.assertEqual(
+            len(result),
+            len(EXPECTED2),
+            f"Expected result tuple length to be {len(EXPECTED2)} but got {len(result)}",
+        )
         for expected_value, result_value in zip(EXPECTED2, result):
             self.assertAlmostEqual(
                 expected_value,

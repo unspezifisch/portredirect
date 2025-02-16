@@ -2,18 +2,11 @@
 //
 // License: GPL-3.0-only
 
-use std::error::Error;
-
 use anyhow::{Context, Result};
 use tokio::io::{copy_bidirectional_with_sizes, AsyncRead, AsyncWrite};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::metrics_helper::MetricsCounter;
-
-/// Checks whether the error represents a graceful shutdown (error 0).
-fn is_graceful_shutdown<T: Error>(err: &T) -> bool {
-    err.to_string().contains("error 0")
-}
 
 pub async fn forward_bidirectional<StreamA, StreamB, StreamName, CounterA, CounterB>(
     a: &mut StreamA,
@@ -37,22 +30,12 @@ where
             stream_a_counter.inc_by(bytes_a);
             stream_b_counter.inc_by(bytes_b);
             info!(
-                "Stream (id={}): forwarded {} bytes in A->B direction and {} bytes in B->A direction",
+                "Stream (id={}): forwarded (A:B) ({}:{}) bytes",
                 id, bytes_a, bytes_b
             );
             Ok(())
         }
-        Err(err) => {
-            if is_graceful_shutdown(&err) {
-                warn!(
-                    "Stream (id={}): bidirectional copy finished gracefully (error 0)",
-                    id
-                );
-                Ok(())
-            } else {
-                Err(err).context("Bidirectional copy failed")
-            }
-        }
+        Err(err) => Err(err).context("Bidirectional copy terminated"),
     }
 }
 

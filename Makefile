@@ -2,21 +2,23 @@
 # Makefile for Cargo and Python Project
 #
 # Targets:
-#   all           : Build release binaries (default target).
+#   all           : Run tests and build release binaries (default target).
 #   docs          : Generate documentation by analyzing Cargo modules and rendering GraphViz graphs.
 #   build         : Build the Cargo project in debug mode.
 #   release       : Build the Cargo project in release mode and list the resulting binaries.
 #   lint          : Run Rust linter (cargo clippy) and check Python formatting (black) on utils and tests.
-#   test          : Run both Cargo tests and Python unit tests.
+#   lint_fix      : Automatically apply Rust suggestions and format Python files.
+#   test          : Run all tests: Cargo tests, Python unit tests, and BATS tests.
 #   test_cargo    : Run Cargo tests.
 #   test_python   : Run Python unit tests (Data Cruncher and Connection Stress Test).
+#   test_bats     : Run BATS tests.
 #   clean         : Clean build artifacts using Cargo's built-in clean command.
 #   run_server    : Run the 'portredirect_server' binary with extra arguments. Pass args via the ARGS variable.
 #   run_client    : Run the 'portredirect_client' binary with extra arguments. Pass args via the ARGS variable.
 #
 # Usage Examples:
 #   make
-#       Builds release binaries (default).
+#       Runs all tests and builds release binaries (default).
 #
 #   make build
 #       Builds the project in debug mode.
@@ -27,8 +29,11 @@
 #   make lint
 #       Runs lint checks on Rust and Python code.
 #
+#   make lint_fix
+#       Automatically fixes lint issues for Rust and Python code.
+#
 #   make test
-#       Runs all tests (Cargo and Python).
+#       Runs all tests (Cargo, Python, and BATS).
 #
 #   make clean
 #       Cleans build artifacts.
@@ -48,6 +53,7 @@ all: test release
 # ------------------------------
 # Documentation targets.
 # ------------------------------
+# * (This target is called by CI as well.)
 docs:
 	@echo "Analyzing Cargo module..."
 	@./utils/docs-generate-cargo-modules-tree.sh
@@ -58,6 +64,7 @@ docs:
 # Build targets.
 # ------------------------------
 # Build the Cargo project (debug mode).
+# * (This target is called by CI as well.)
 build:
 	@echo "Building Cargo project (debug mode)..."
 	@cargo build
@@ -72,6 +79,7 @@ release:
 # Lint targets.
 # ------------------------------
 # Run Rust linter and Python code formatter checks.
+# * (This target is called by CI as well.)
 lint:
 	@echo "Running Rust linter (cargo clippy)..."
 	@cargo clippy --all-targets --all-features -- -D warnings
@@ -97,14 +105,21 @@ lint_fix:
 # Test targets.
 # ------------------------------
 # Top-level test target: runs both Cargo and Python tests.
-test: test_cargo test_python
+test: test_cargo test_python test_bats
+
+# Run BATS tests.
+test_bats:
+	@echo "Running BATS tests..."
+	@bats test/
 
 # Run Cargo tests.
+# * (This target is called by CI as well.)
 test_cargo:
 	@echo "Running Cargo tests..."
 	@cargo test
 
 # Run Python unit tests.
+# * (This target is called by CI as well.)
 test_python:
 	@echo "Running Python unit tests (Data Cruncher)..."
 	@cd utils && python -m unittest test_cst_datacruncher.py

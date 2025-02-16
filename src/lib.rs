@@ -33,8 +33,9 @@ impl PortRedirectProtocol {
     pub const CONNECTION_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(5);
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
 
-    pub const QUIC_STREAM_READ_BUFFER_SIZE: usize = 256 * 1024; // 256 KiB
-    pub const QUIC_CRYPTO_BUFFER_SIZE: usize = 256 * 1024;
+    // TODO choose these values non-arbitrarily
+    pub const QUIC_STREAM_READ_BUFFER_SIZE: usize = 64 * 1024; // 64 KiB
+    pub const QUIC_CRYPTO_BUFFER_SIZE: usize = 64 * 1024;
 }
 
 pub type ByteCount = u64;

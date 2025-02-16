@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import json
-import argparse
 import os
+import argparse
 import matplotlib.pyplot as plt
 
-
 def extract_throughput(intervals):
-    """Extract mid-times and throughput (Mbps) for each interval."""
+    """
+    Given the list of interval dictionaries from an iperf3 JSON output,
+    return two lists: mid-times (s) and throughput (Mbps) for each interval.
+    """
     times = []
     throughput = []
     for interval in intervals:
@@ -21,130 +23,109 @@ def extract_throughput(intervals):
     return times, throughput
 
 
-def extract_rtt(intervals):
-    """Extract mid-times and average RTT (ms) for each interval (if available)."""
-    times = []
-    rtts = []
-    for interval in intervals:
-        stream_rtts = []
-        for stream in interval.get("streams", []):
-            if "rtt" in stream:
-                stream_rtts.append(stream["rtt"])
-        avg_rtt = sum(stream_rtts) / len(stream_rtts) if stream_rtts else None
-        sum_data = interval.get("sum", {})
-        start = sum_data.get("start", 0)
-        end = sum_data.get("end", 0)
-        mid = (start + end) / 2
-        times.append(mid)
-        rtts.append(avg_rtt)
-    return times, rtts
-
-
-def extract_cumulative_bytes(intervals):
-    """Extract mid-times and cumulative bytes transferred."""
-    times = []
-    cum_bytes = []
-    total = 0
-    for interval in intervals:
-        sum_data = interval.get("sum", {})
-        total += sum_data.get("bytes", 0)
-        start = sum_data.get("start", 0)
-        end = sum_data.get("end", 0)
-        mid = (start + end) / 2
-        times.append(mid)
-        cum_bytes.append(total)
-    return times, cum_bytes
-
-
-def plot_cpu_utilization(cpu_data, out_file=None):
-    """Plot CPU utilization as a bar chart."""
-    labels = list(cpu_data.keys())
-    values = [cpu_data[k] for k in labels]
-    fig_cpu, ax_cpu = plt.subplots(figsize=(8, 4))
-    bars = ax_cpu.bar(labels, values, color="gray")
-    ax_cpu.set_xlabel("CPU Metrics")
-    ax_cpu.set_ylabel("Utilization (%)")
-    ax_cpu.set_title("CPU Utilization")
-    for bar, value in zip(bars, values):
-        height = bar.get_height()
-        ax_cpu.text(
-            bar.get_x() + bar.get_width() / 2, height + 1, f"{value:.1f}%", ha="center"
-        )
-    plt.tight_layout()
-    if out_file:
-        fig_cpu.savefig(out_file)
-        plt.close(fig_cpu)
+def label_from_filename(filepath):
+    """
+    Create a label based on the filename.
+    If the filename contains "baseline" or "tunneled", use that,
+    and append "Forward" or "Reverse" based on the presence of '_R'.
+    """
+    base = os.path.basename(filepath)
+    if "baseline" in base:
+        label = "Baseline"
+    elif "tunneled_client_parallel" in base:
+        label = "Tunneled (parallel)"
+    elif "tunneled_client" in base:
+        label = "Tunneled"
     else:
-        plt.show()
+        label = base
+
+    if "_R" in base:
+        label += " Reverse"
+    else:
+        label += " Forward"
+    return label
 
 
-def process_file(json_file, out_dir):
-    with open(json_file, "r") as f:
-        data = json.load(f)
+def process_json_file(json_file):
+    """Load JSON file and extract throughput data (times, Mbps)."""
+    try:
+        with open(json_file, "r") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"Error loading {json_file}: {e}")
+        return None, None
+
     intervals = data.get("intervals", [])
     if not intervals:
         print(f"No interval data found in {json_file}. Skipping.")
-        return
+        return None, None
 
-    # Extract data for plots.
-    time_throughput, throughput = extract_throughput(intervals)
-    time_rtt, rtt = extract_rtt(intervals)
-    time_cum_bytes, cum_bytes = extract_cumulative_bytes(intervals)
-
-    # Create a figure with three subplots.
-    fig, axs = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
-    fig.suptitle(
-        f"iperf3 Performance Metrics\n{os.path.basename(json_file)}", fontsize=16
-    )
-
-    # Throughput vs Time.
-    axs[0].plot(time_throughput, throughput, marker="o", color="blue")
-    axs[0].set_ylabel("Throughput (Mbps)")
-    axs[0].set_title("Throughput vs Time")
-    axs[0].grid(True)
-
-    # RTT vs Time.
-    axs[1].plot(time_rtt, rtt, marker="o", color="orange")
-    axs[1].set_ylabel("RTT (ms)")
-    axs[1].set_title("RTT vs Time")
-    axs[1].grid(True)
-
-    # Cumulative Bytes vs Time.
-    axs[2].plot(time_cum_bytes, cum_bytes, marker="o", color="green")
-    axs[2].set_ylabel("Cumulative Bytes")
-    axs[2].set_xlabel("Time (s)")
-    axs[2].set_title("Cumulative Bytes vs Time")
-    axs[2].grid(True)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    base_name = os.path.splitext(os.path.basename(json_file))[0]
-    out_file = os.path.join(out_dir, f"{base_name}_plot.png")
-    fig.savefig(out_file)
-    plt.close(fig)
-    print(f"Saved plot for {json_file} to {out_file}")
-
-    # Plot CPU utilization if available.
-    if "end" in data and "cpu_utilization_percent" in data["end"]:
-        cpu_data = data["end"]["cpu_utilization_percent"]
-        cpu_out_file = os.path.join(out_dir, f"{base_name}_cpu.png")
-        plot_cpu_utilization(cpu_data, out_file=cpu_out_file)
-        print(f"Saved CPU utilization plot for {json_file} to {cpu_out_file}")
+    return extract_throughput(intervals)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate iperf3 plots from JSON output files."
+        description="Compare iperf3 throughput (Forward vs Reverse) across multiple JSON files."
     )
     parser.add_argument("json_files", nargs="+", help="Path(s) to iperf3 JSON file(s).")
     parser.add_argument(
-        "--out-dir", default="testplots", help="Directory to save plot images."
+        "--out-dir", default="testplots", help="Directory to save the comparison plot."
+    )
+    parser.add_argument(
+        "--out-file",
+        default="comparison_plot.png",
+        help="Filename for the output plot image.",
     )
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
-    for json_file in args.json_files:
-        process_file(json_file, args.out_dir)
 
+    # Group curves into forward and reverse
+    forward_curves = []
+    reverse_curves = []
+
+    for json_file in args.json_files:
+        times, throughput = process_json_file(json_file)
+        if times is None or throughput is None:
+            continue
+        label = label_from_filename(json_file)
+        if "Reverse" in label:
+            reverse_curves.append((label, times, throughput))
+        else:
+            forward_curves.append((label, times, throughput))
+
+    # Create a figure with two subplots: one for forward, one for reverse
+    fig, (ax_forward, ax_reverse) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+    fig.suptitle("Comparison of iperf3 Throughput (Mbps)", fontsize=16)
+
+    # Plot forward curves
+    if forward_curves:
+        for label, times, throughput in forward_curves:
+            ax_forward.plot(times, throughput, marker="o", label=label)
+        ax_forward.set_title("Forward Tests")
+        ax_forward.set_xlabel("Time (s)")
+        ax_forward.set_ylabel("Throughput (Mbps)")
+        ax_forward.grid(True)
+        ax_forward.legend()
+    else:
+        ax_forward.text(0.5, 0.5, "No Forward Data", ha="center", va="center")
+
+    # Plot reverse curves
+    if reverse_curves:
+        for label, times, throughput in reverse_curves:
+            ax_reverse.plot(times, throughput, marker="o", label=label)
+        ax_reverse.set_title("Reverse Tests")
+        ax_reverse.set_xlabel("Time (s)")
+        ax_reverse.grid(True)
+        ax_reverse.legend()
+    else:
+        ax_reverse.text(0.5, 0.5, "No Reverse Data", ha="center", va="center")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    out_path = os.path.join(args.out_dir, args.out_file)
+    fig.savefig(out_path)
+    plt.close(fig)
+    print(f"Saved comparison plot to {out_path}")
 
 if __name__ == "__main__":
     main()

@@ -26,7 +26,7 @@ jobs:
       - name: Run BATS test(s)
         run: bats --print-output-on-failure --gather-test-outputs-in ./bats-logs tests/full_e2e_benchmark.bats
       - name: Run Data Cruncher for Plots
-        run: python3 ./utils/iperf_datacruncher.py testlogs/prrs_full_e2e_benchmark*/*.json --out-dir testplots
+        run: python3 ./utils/iperf_datacruncher.py testlogs/prrs_full_e2e_benchmark*/*.json --out-dir testplots --out-dir testplots --out-file full_benchmark_comparison.png
       - name: Show Log Files
         if: always()
         run: |

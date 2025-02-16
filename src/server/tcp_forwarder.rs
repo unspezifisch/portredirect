@@ -22,21 +22,21 @@ where
     let dummy_counter_a = DummyCounter::new();
     let dummy_counter_b = DummyCounter::new();
 
-    let stream_id = quic_stream.to_string();
+    let stream_name = format!("Server-A:TCP|B:QUIC({})", quic_stream.to_string());
     debug!(
-        "Starting QUIC->TCP stream handler, stream id {}",
-        stream_id.clone()
+        "Starting TCP<->QUIC stream handler, stream id {}",
+        stream_name.clone()
     );
 
     forward_bidirectional(
-        &mut tcp_stream,
-        &mut quic_stream,
-        stream_id.clone(),
+        &mut tcp_stream,  // A
+        &mut quic_stream, // B
+        stream_name.clone(),
         &dummy_counter_a,
         &dummy_counter_b,
     )
     .await?;
 
-    debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
+    debug!("Closed TCP<->QUIC stream handler, stream id {}", stream_name);
     Ok(())
 }

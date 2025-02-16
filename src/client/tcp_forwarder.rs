@@ -22,27 +22,30 @@ pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
 where
     QuicStreamType: AsyncRead + AsyncWrite + Unpin + std::fmt::Display,
 {
-    let mut tcp_stream =  // Create TCP connection to remote destination
-        tokio::net::TcpStream::connect(&config.app_data.forward_destination)
-            .await
-            .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
+    // Create TCP connection to remote destination
+    let mut tcp_stream = tokio::net::TcpStream::connect(&config.app_data.forward_destination)
+        .await
+        .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
-    let stream_id = quic_stream.to_string();
+    let stream_name = format!("Client-A:TCP|B:QUIC({})", quic_stream.to_string());
     debug!(
-        "Starting QUIC->TCP stream handler, stream id {}",
-        stream_id.clone()
+        "Starting TCP<->QUIC stream handler, stream id {}",
+        stream_name.clone()
     );
 
     forward_bidirectional(
-        &mut tcp_stream,
-        &mut quic_stream,
-        stream_id.clone(),
+        &mut tcp_stream,  // A
+        &mut quic_stream, // B
+        stream_name.clone(),
         // Force dereferencing here because the counter is a LazyStatic.
         &*BYTES_TRANSMITTED_A,
         &*BYTES_TRANSMITTED_B,
     )
     .await?;
 
-    debug!("Closed QUIC->TCP stream handler, stream id {}", stream_id);
+    debug!(
+        "Closed TCP<->QUIC stream handler, stream id {}",
+        stream_name
+    );
     Ok(())
 }

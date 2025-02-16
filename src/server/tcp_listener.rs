@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, instrument, warn};
 
 /// Accepts TCP connections and bridges them to QUIC.
 #[instrument(skip(listener, app_data))]
@@ -64,8 +64,8 @@ pub async fn handle_tcp_listener(
             let start_time = Instant::now();
 
             if let Err(e) = forward_tcp_to_quic_stream(tcp_stream, quic_stream).await {
-                error!(
-                    "Error handling TCP-to-QUIC stream (id {}): {:?}",
+                warn!(
+                    "TCP-to-QUIC stream terminated (id: {}): {:?}",
                     stream_id, e
                 );
             } else {

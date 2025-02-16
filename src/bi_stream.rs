@@ -56,6 +56,6 @@ impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for BiStream<R, W> {
 
 impl<R, W> fmt::Display for BiStream<R, W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "BiStream-{}", self.name,)
+        write!(f, "BiStream{{{}}}", self.name,)
     }
 }

@@ -10,7 +10,10 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::{get_config_dir, quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT}};
+use crate::{
+    get_config_dir,
+    quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT},
+};
 
 /// Configuration for the QUIC server.
 ///
@@ -386,7 +389,7 @@ where
             );
             conn.refuse();
         } else if config.stateless_retry && !conn.remote_address_validated() {
-            warn!(
+            info!(
                 "Requiring connection from {} to validate its address",
                 conn.remote_address()
             );
@@ -406,7 +409,10 @@ where
             let fut = handle_incoming_client(Arc::clone(&config), connection);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("connection failed: {reason}", reason = e.to_string())
+                    warn!(
+                        "Incoming connection dropped: {reason}",
+                        reason = e.to_string()
+                    )
                 }
             });
         }

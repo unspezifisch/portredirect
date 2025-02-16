@@ -16,6 +16,7 @@ The generated plots are saved in the specified output directory.
 import json
 import os
 import argparse
+import re
 import matplotlib.pyplot as plt
 
 
@@ -74,21 +75,32 @@ def extract_rtt(intervals):
 
 def label_from_filename(filepath):
     """
-    Derive a label from the filename. If the filename contains 'baseline' or 'tunneled',
-    use that; and append 'Forward' or 'Reverse' based on the presence of '_R'.
+    Derive a label from the filename. For baseline and tunneled tests, it labels as before.
+    For tests with 'parallel' in the filename, it extracts the connection count from the filename.
+    The final label includes the test type, connection count (if applicable) and direction
+    (Forward/Reverse).
 
     :param filepath: Full path to the JSON file.
-    :return: A string label describing the test (e.g. "Baseline Forward", "Tunneled Reverse", etc.)
+    :return: A string label describing the test (e.g. "Baseline Forward",
+             "Tunneled (parallel, 10) Reverse", etc.)
     """
     base = os.path.basename(filepath)
     if "baseline" in base:
         label = "Baseline"
     elif "tunneled_client_parallel" in base:
-        label = "Tunneled (parallel)"
+        # Look for the connection count after 'parallel' (optionally after '_R')
+        # Examples: iperf3_tunneled_client_parallel_10.json or iperf3_tunneled_client_parallel_R_10.json
+        match = re.search(r"parallel(?:_R)?_(\d+)", base)
+        if match:
+            count = match.group(1)
+            label = f"Tunneled (parallel, {count})"
+        else:
+            label = "Tunneled (parallel)"
     elif "tunneled_client" in base:
         label = "Tunneled"
     else:
         label = base
+
     if "_R" in base:
         label += " Reverse"
     else:
@@ -266,7 +278,6 @@ def main():
         ax.grid(True)
         ax.legend()
         ax.set_xlim(left=0)
-        # no ylim 0 for log ;)
         # Use a logarithmic scale for the y-axis.
         ax.set_yscale("log")
     else:

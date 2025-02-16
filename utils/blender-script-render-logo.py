@@ -6,7 +6,7 @@ It creates various scene elements including:
     - A custom skybox with textured detail to provide practical reflections for gold.
     - Background pipes and clouds to add depth.
     - A hollow green pipe with improved reflective properties.
-    - Reflective gold text with subtle bump details.
+    - Reflective gold text with subtle bump details (not in Eevee).
     - Custom lighting and camera setups.
     - A world background with a dark Mario-blue tone.
 

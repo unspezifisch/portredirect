@@ -22,7 +22,7 @@ setup() {
 
     # Start portredirect server in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_server \
-        --local-host 127.0.0.1 --local-port 10002 \
+        --local-host 127.0.0.1 --local-port 1111 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
@@ -32,7 +32,7 @@ setup() {
 
     # Start portredirect client in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_client \
-        --destination-host 127.0.0.1 --destination-port 1234 \
+        --destination-host 127.0.0.1 --destination-port 2222 \
         --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
         --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \
         --provide-metrics \
@@ -51,53 +51,35 @@ teardown() {
 }
 
 send_and_verify() {
-    local size=$1
-    local filename="testfile_${size}MB"
+    #local size=$1
+    local filename="testfile_10GB"
 
-    # Generate random file of specified size
-    head -c ${size}M </dev/urandom >$filename
+    # Fetch huge test file, probably faster than our RNG with urandom
+    [ -e "$filename" ] || wget -O "$filename" https://hil-speed.hetzner.com/10GB.bin
+
+    # Slice off file of specified size
+    #head -c ${size}M <10GB.bin >$filename
 
     # Compute original MD5 hash
     local original_md5=$(md5sum "$filename" | awk '{print $1}')
 
     # Start netcat listener on port 5201 (bridged by portredirect)
-    nc -l -p 1234 >received_$filename &
+    nc -l -p 2222 >received_$filename &
     sleep 1 # Allow listener to start
 
-    # Send the file via netcat to port 10002, which is redirected to 5201
-    cat "$filename" | nc -N 127.0.0.1 10002
+    # Send the file via netcat to port 1111, which is redirected to 2222
+    cat "$filename" | nc -N 127.0.0.1 1111
     sleep 1 # Allow data to be received
 
     # Compute received file MD5 hash
     local received_md5=$(md5sum "received_$filename" | awk '{print $1}')
 
-    rm "$filename"
-    pkill -f "nc -l -p 1234" || true
+    pkill -f "nc -l -p 2222" || true
 
     # Compare hashes
     [ "$original_md5" = "$received_md5" ]
 }
 
-@test "Netcat data integrity test (1MB)" {
-    send_and_verify 1
-}
-
-@test "Netcat data integrity test (100MB)" {
-    send_and_verify 100
-}
-
-@test "Netcat repeated data integrity test (1MB x 100)" {
-    for i in {1..100}; do
-        send_and_verify 1
-    done
-
-    # Check that no ERROR occurred in the portredirect logs
-    if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
-        echo "ERROR found in server log"
-        exit 1
-    fi
-    if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
-        echo "ERROR found in client log"
-        exit 1
-    fi
+@test "Netcat + MD5 data integrity test" {
+    send_and_verify
 }

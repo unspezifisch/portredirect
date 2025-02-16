@@ -6,6 +6,7 @@ ensure_deps() {
     check_command cargo
     check_command nc
     check_command md5sum
+    check_command pv
 }
 
 setup() {
@@ -55,7 +56,7 @@ send_and_verify() {
     local filename="testfile_10GB"
 
     # Fetch huge test file, probably faster than our RNG with urandom
-    [ -e "$filename" ] || wget -O "$filename" https://hil-speed.hetzner.com/10GB.bin
+    [ -e "$filename" ] || wget -qO "$filename" https://hil-speed.hetzner.com/10GB.bin
 
     # Slice off file of specified size
     #head -c ${size}M <10GB.bin >$filename
@@ -68,8 +69,7 @@ send_and_verify() {
     sleep 1 # Allow listener to start
 
     # Send the file via netcat to port 1111, which is redirected to 2222
-    cat "$filename" | nc -N 127.0.0.1 1111
-    sleep 1 # Allow data to be received
+    time cat "$filename" | pv -rta | nc -N 127.0.0.1 1111
 
     # Compute received file MD5 hash
     local received_md5=$(md5sum "received_$filename" | awk '{print $1}')

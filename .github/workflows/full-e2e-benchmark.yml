@@ -18,7 +18,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats figlet iperf3
       - name: Install Pip dependencies
-        run: pip install -r tests/requirements.txt
+        run: pip install -r utils/requirements.txt
       - name: Cargo release build
         run: |
           echo "this is a CI run. delete this file if not. ./.github/workflows and ./tests are using this file." > .ci

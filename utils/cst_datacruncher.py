@@ -12,7 +12,7 @@ Usage:
   python3 cst_datacruncher.py [OPTIONS] FILES...
 
 Example:
-  python3 cst_datacruncher.py -o ./plots testlogs/prrs_full_e2e_connection_stress_test_*/cst_*
+  python3 cst_datacruncher.py -o ./plots ./testlogs/prrs_full_e2e_connection_stress_test_*/cst_*
 
 Unit tests:
   python3 -m unittest test_cst_datacruncher.py

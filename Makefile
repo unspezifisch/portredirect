@@ -107,9 +107,9 @@ test_cargo:
 # Run Python unit tests.
 test_python:
 	@echo "Running Python unit tests (Data Cruncher)..."
-	@cd tests && python -m unittest test_cst_datacruncher.py
+	@cd utils && python -m unittest test_cst_datacruncher.py
 	@echo "Running Python unit tests (Connection Stress Test)..."
-	@cd tests && python -m unittest test_connection_stress_test.py
+	@cd utils && python -m unittest test_connection_stress_test.py
 
 # ------------------------------
 # Clean target.

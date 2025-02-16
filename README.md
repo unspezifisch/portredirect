@@ -110,18 +110,10 @@ PortRedirect-RS secures QUIC tunnels using auto-generated certificates and a PSK
 
 ## Running Tests
 
-### Cargo Tests
-
-Run all built-in tests with:
+Use the Makefile to run all tests:
 
 ```sh
-cargo test
-```
-
-To run specific tests, use a pattern:
-
-```sh
-cargo test <test_pattern>
+make test
 ```
 
 ### BATS Tests
@@ -146,6 +138,13 @@ For a complete list of options:
 
   ```sh
   portredirect_client --help
+  ```
+
+- **Developer Help:**  
+
+  ```sh
+  # This means please look at the documentation inside the supplied `Makefile`
+  less Makefile
   ```
 
 ## Overview & Limitations

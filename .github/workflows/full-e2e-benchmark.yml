@@ -21,8 +21,8 @@ jobs:
         run: pip install -r tests/requirements.txt
       - name: Cargo release build
         run: |
-            echo "this is a CI run. delete this file if not. ./.github/workflows and ./tests are using this file." > .ci
-            cargo build --release
+          echo "this is a CI run. delete this file if not. ./.github/workflows and ./tests are using this file." > .ci
+          cargo build --release
       - name: Run BATS test(s)
         run: bats --print-output-on-failure --gather-test-outputs-in ./bats-logs tests/full_e2e_benchmark.bats
       - name: Run Data Cruncher for Plots
@@ -30,24 +30,24 @@ jobs:
       - name: Show Log Files
         if: always()
         run: |
-            echo "========== testlogs =========="
-            i=0
-            for subdir in ./testlogs/*; do
-                echo
-                figlet "LOG $i"
-                echo "Test log dir: $subdir"
-                tail -n+0 "$subdir"/* || true
-                i=$((i + 1))
-            done
+          echo "========== testlogs =========="
+          i=0
+          for subdir in ./testlogs/*; do
+              echo
+              figlet "LOG $i"
+              echo "Test log dir: $subdir"
+              tail -n+0 "$subdir"/* || true
+              i=$((i + 1))
+          done
 
-            echo
-            echo "========== bats-logs =========="
-            tail -n+0 ./bats-logs/* || true
+          echo
+          echo "========== bats-logs =========="
+          tail -n+0 ./bats-logs/* || true
 
-            echo
-            echo "========== testplots =========="
-            figlet "PLOTS"
-            ls -l ./testplots || true
+          echo
+          echo "========== testplots =========="
+          figlet "PLOTS"
+          ls -l ./testplots || true
       - name: Upload Logs
         uses: actions/upload-artifact@v4
         if: always()
@@ -57,4 +57,3 @@ jobs:
             ./bats-logs
             ./testlogs
             ./testplots
-            

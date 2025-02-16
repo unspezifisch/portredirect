@@ -467,7 +467,7 @@ def print_benchmark_summary(
     overall_up_rate = total_up_mb / overall_elapsed if overall_elapsed > 0 else 0
     overall_down_rate = total_down_mb / overall_elapsed if overall_elapsed > 0 else 0
 
-    logging.info("\n========== Benchmark Summary ==========")
+    logging.info("========== Benchmark Summary ==========")
     logging.info("Overall benchmark duration: %.2f s", overall_elapsed)
     logging.info("Benchmark parameters:")
     logging.info(" - Worker connections: %d", workers)
@@ -544,7 +544,7 @@ def print_benchmark_summary(
             max_teardown,
             var_teardown,
         )
-    logging.info("=======================================\n")
+    logging.info("=======================================")
 
 
 # -----------------------------
@@ -582,7 +582,7 @@ async def async_main(
     try:
         await run_workers(workers, (server_host, server_port), total_bytes, block_size)
     except Exception as e:
-        logging.error("Worker connections failed: %s", e)
+        logging.error("× Worker connections failed: %s", e)
         # Cancel tasks before propagating the error.
         listener_task.cancel()
         monitor_task.cancel()
@@ -594,22 +594,22 @@ async def async_main(
     try:
         await monitor_task
     except asyncio.CancelledError:
-        logging.info("Monitor task cancelled.")
+        logging.info("✓ Monitor task cancelled.")
 
     listener_task.cancel()
     try:
         await listener_task
     except asyncio.CancelledError:
-        logging.info("TCP listener cancelled.")
+        logging.info("✓ TCP listener cancelled.")
 
     print_benchmark_summary(overall_elapsed, workers, block_size, total_bytes)
 
     if error_occurred:
-        logging.error("Benchmark completed with errors.")
+        logging.error("××× Benchmark completed with errors.")
         # Raising an exception here ensures that the process will exit with status 1.
-        raise RuntimeError("Benchmark encountered errors.")
+        raise RuntimeError("××× Benchmark encountered errors.")
     else:
-        logging.info("Benchmark complete.")
+        logging.info("✓✓✓ Benchmark complete.")
 
 
 @click.command()

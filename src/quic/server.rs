@@ -10,7 +10,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::{get_config_dir, quic::ALPN_QUIC_PORTREDIRECT};
+use crate::{get_config_dir, quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT}};
 
 /// Configuration for the QUIC server.
 ///
@@ -364,12 +364,7 @@ where
     let mut server_config =
         quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
-    //transport_config.max_concurrent_uni_streams(0_u8.into());
-    transport_config.max_concurrent_bidi_streams(0_u8.into());
-    transport_config.send_fairness(false);
-    transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(25))); // TODO This option means we don't really need the custom keepalive task.
-    transport_config.crypto_buffer_size(256 * 1024);
-    transport_config.allow_spin(false);
+    configure_transport_config(transport_config);
 
     // Start QUIC server listener.
     info!(listen_addr = %config.listen, "Binding QUIC endpoint");

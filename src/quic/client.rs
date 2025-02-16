@@ -5,10 +5,12 @@
 // Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/client.rs
 
 use anyhow::{anyhow, Error, Result};
-use quinn::crypto::rustls::QuicClientConfig;
+use quinn::{crypto::rustls::QuicClientConfig, TransportConfig};
 use rustls::pki_types::CertificateDer;
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument};
+
+use crate::quic::configure_transport_config;
 
 use super::ALPN_QUIC_PORTREDIRECT;
 
@@ -93,8 +95,14 @@ where
         .unwrap_or_else(|| config.remote_socket.ip().to_string());
 
     // QUIC client setup.
-    let client_config =
+    let mut client_config =
         quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+
+    // TransportConfig is set quite differently between Quinn server and client for some reason
+    let mut transport_config = Arc::new(TransportConfig::default());
+    configure_transport_config(Arc::get_mut(&mut transport_config).unwrap());
+    client_config.transport_config(transport_config);
+
     let mut endpoint = quinn::Endpoint::client(config.local_socket)?;
     endpoint.set_default_client_config(client_config);
 

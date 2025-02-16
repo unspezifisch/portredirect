@@ -35,6 +35,10 @@ jobs:
       # It has no sense to run this benchmark if its test is failing
       - name: Run Python Unit Tests
         run: make test_python
+      - name: Cargo release build
+        run: |
+          echo "this is a CI run. delete this file if not. ./.github/workflows and ./tests are using this file." > .ci
+          cargo build --release
       - name: Run Big Benchmark
         run: bats --print-output-on-failure --gather-test-outputs-in ./bats-logs tests/full_e2e_connection_stress_test.bats
       - name: Run Data Cruncher for Plots
@@ -51,17 +55,16 @@ jobs:
             tail -n+0 "$subdir"/* || true
             i=$((i + 1))
           done
-      
+
           echo
           echo "========== bats-logs =========="
           figlet "BATS LOGS"
           tail -n+0 ./bats-logs/* || true
-      
+
           echo
           echo "========== testplots =========="
           figlet "PLOTS"
           ls -l testplots || true
-      
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         if: always()

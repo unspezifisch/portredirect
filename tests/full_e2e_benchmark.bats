@@ -40,8 +40,8 @@ setup() {
     mkdir -p ./testlogs
     LOG_DIR=$(mktemp -p ./testlogs -d "${LOG_NAME}_$(date +%Y%m%d-%H%M%S).XXXXXX")
 
-    # Build the project
-    cargo build --release
+    # Build the project, when not running in CI
+    [ -e .ci ] || cargo build --release
 
     # Start portredirect server in background
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_server \

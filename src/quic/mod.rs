@@ -16,7 +16,7 @@ pub fn configure_transport_config(transport_config: &mut TransportConfig) {
     transport_config.send_fairness(false);
 
     // We manage our own connection limit
-    transport_config.max_concurrent_uni_streams(1_u8.into());
+    transport_config.max_concurrent_uni_streams(0_u8.into());
     transport_config.max_concurrent_bidi_streams(0_u8.into());
 
     // 30s timeout is QUIC's default timeout

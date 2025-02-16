@@ -95,13 +95,8 @@ where
         .unwrap_or_else(|| config.remote_socket.ip().to_string());
 
     // QUIC client setup.
-    let mut client_config =
+    let client_config =
         quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
-
-    // TransportConfig is set quite differently between Quinn server and client for some reason
-    let mut transport_config = Arc::new(TransportConfig::default());
-    configure_transport_config(Arc::get_mut(&mut transport_config).unwrap());
-    client_config.transport_config(transport_config);
 
     let mut endpoint = quinn::Endpoint::client(config.local_socket)?;
     endpoint.set_default_client_config(client_config);

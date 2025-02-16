@@ -69,8 +69,8 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: portredirect-e2e-benchmark-artifacts
+          name: portredirect-artifact-benchmark-custom
           path: |
-            ./testlogs
             ./bats-logs
+            ./testlogs
             ./testplots

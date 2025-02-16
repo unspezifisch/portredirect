@@ -52,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: portredirect-e2e-benchmark-logs
+          name: portredirect-artifact-benchmark-iperf3
           path: |
             ./bats-logs
             ./testlogs

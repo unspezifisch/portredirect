@@ -1,4 +1,5 @@
 ## project specific
+/bats-logs
 /target
 /testplots
 /testlogs

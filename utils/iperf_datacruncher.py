@@ -6,7 +6,7 @@ This script processes multiple iperf3 JSON output files (generated with the -J f
 to extract throughput and RTT data. It then produces two comparison plots:
   - Throughput (Mbps) vs. Time (s): split into forward and reverse tests.
   - RTT (ms) vs. Time (s): a single plot that overlays all RTT curves.
-  
+
 Usage:
   python3 utils/iperf_datacruncher.py <json_files> [--out-dir <output_directory>]
 

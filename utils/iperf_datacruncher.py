@@ -2,15 +2,15 @@
 """
 iperf3 Datacruncher Tool
 -------------------------
-This script processes multiple iperf3 JSON output files (generated with the -J flag) to extract throughput and RTT data.
-It then produces two comparison plots:
-  - Throughput (Mbps) vs. Time (s)
-  - RTT (ms) vs. Time (s)
-Data from forward and reverse tests (determined by filenames) are plotted separately.
-The generated plots are saved in the specified output directory.
-
+This script processes multiple iperf3 JSON output files (generated with the -J flag)
+to extract throughput and RTT data. It then produces two comparison plots:
+  - Throughput (Mbps) vs. Time (s): split into forward and reverse tests.
+  - RTT (ms) vs. Time (s): a single plot that overlays all RTT curves.
+  
 Usage:
   python3 utils/iperf_datacruncher.py <json_files> [--out-dir <output_directory>]
+
+The generated plots are saved in the specified output directory.
 """
 
 import json
@@ -21,9 +21,7 @@ import matplotlib.pyplot as plt
 
 def extract_throughput(intervals):
     """
-    Given the list of interval dictionaries from an iperf3 JSON output,
-    return two lists: mid-times (s) and throughput (Mbps) for each interval.
-    If the first datapoint is not at time 0, a point at 0 (throughput 0) is inserted.
+    Extract mid-times and throughput (Mbps) from iperf3 intervals.
     """
     times = []
     throughput = []
@@ -36,23 +34,16 @@ def extract_throughput(intervals):
         # Convert bits_per_second to Mbps
         bps = sum_data.get("bits_per_second", 0)
         throughput.append(bps / 1e6)
-    if times and times[0] > 0:
-        times.insert(0, 0)
-        throughput.insert(0, 0)
     return times, throughput
 
 
 def extract_rtt(intervals):
     """
-    Given the list of interval dictionaries from an iperf3 JSON output,
-    return two lists: mid-times (s) and average RTT (ms) for each interval.
-    If the first datapoint is not at time 0, a point at time 0 is inserted using
-    the first measured RTT.
+    Extract mid-times and average RTT (ms) from iperf3 intervals.
     """
     times = []
     rtts = []
     for interval in intervals:
-        # Average RTT across streams (if available)
         stream_rtts = [
             stream["rtt"] for stream in interval.get("streams", []) if "rtt" in stream
         ]
@@ -63,10 +54,6 @@ def extract_rtt(intervals):
         mid = (start + end) / 2
         times.append(mid)
         rtts.append(avg_rtt)
-    if times and times[0] > 0:
-        # For RTT, we assume the first measured value applies at time 0.
-        times.insert(0, 0)
-        rtts.insert(0, rtts[0])
     return times, rtts
 
 
@@ -92,7 +79,14 @@ def label_from_filename(filepath):
 
 
 def load_data(json_file):
-    """Load a JSON file and extract throughput and RTT data (times and values)."""
+    """
+    Load a JSON file and extract throughput and RTT data.
+    Returns:
+      t_th: list of time points for throughput
+      throughput: list of throughput values (Mbps)
+      t_rtt: list of time points for RTT
+      rtt: list of RTT values (ms)
+    """
     try:
         with open(json_file, "r") as f:
             data = json.load(f)
@@ -119,11 +113,11 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # Group curves by direction for both throughput and RTT.
+    # Group throughput curves by direction.
     forward_throughput = []
     reverse_throughput = []
-    forward_rtt = []
-    reverse_rtt = []
+    # For RTT, collect all curves in a single list.
+    all_rtt = []
 
     for json_file in args.json_files:
         data = load_data(json_file)
@@ -133,10 +127,9 @@ def main():
         label = label_from_filename(json_file)
         if "Reverse" in label:
             reverse_throughput.append((label, t_th, throughput))
-            reverse_rtt.append((label, t_rtt, rtt))
         else:
             forward_throughput.append((label, t_th, throughput))
-            forward_rtt.append((label, t_rtt, rtt))
+        all_rtt.append((label, t_rtt, rtt))
 
     # ----- Throughput Comparison Plot -----
     fig, (ax_fwd, ax_rev) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
@@ -170,29 +163,18 @@ def main():
     print(f"Saved throughput comparison plot to {throughput_file}")
 
     # ----- RTT Comparison Plot -----
-    fig, (ax_fwd, ax_rev) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+    fig, ax = plt.subplots(figsize=(10, 6))
     fig.suptitle("iperf3 RTT Comparison (ms)", fontsize=16)
 
-    if forward_rtt:
-        for label, t, r in forward_rtt:
-            ax_fwd.plot(t, r, marker="o", label=label)
-        ax_fwd.set_title("Forward")
-        ax_fwd.set_xlabel("Time (s)")
-        ax_fwd.set_ylabel("RTT (ms)")
-        ax_fwd.grid(True)
-        ax_fwd.legend()
+    if all_rtt:
+        for label, t, r in all_rtt:
+            ax.plot(t, r, marker="o", label=label)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("RTT (ms)")
+        ax.grid(True)
+        ax.legend()
     else:
-        ax_fwd.text(0.5, 0.5, "No Forward Data", ha="center", va="center")
-
-    if reverse_rtt:
-        for label, t, r in reverse_rtt:
-            ax_rev.plot(t, r, marker="o", label=label)
-        ax_rev.set_title("Reverse")
-        ax_rev.set_xlabel("Time (s)")
-        ax_rev.grid(True)
-        ax_rev.legend()
-    else:
-        ax_rev.text(0.5, 0.5, "No Reverse Data", ha="center", va="center")
+        ax.text(0.5, 0.5, "No RTT Data", ha="center", va="center")
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     rtt_file = os.path.join(args.out_dir, "comparison_rtt.png")

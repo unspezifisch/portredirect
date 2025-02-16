@@ -443,7 +443,35 @@ async def monitor_stats(
 
 
 # -----------------------------
-# Benchmark Summary Function
+# Benchmark Header Function (Printed at the beginning of the test)
+# -----------------------------
+
+
+def print_benchmark_header(
+    workers: int,
+    block_size: int,
+    total_bytes: int,
+    server_host: str,
+    server_port: int,
+    listener_host: str,
+    listener_port: int,
+):
+    """Print a header with benchmark parameters and the full command line used."""
+    logging.info("========== Benchmark Header ==========")
+    logging.info("Command line: %s", " ".join(sys.argv))
+    logging.info("Benchmark parameters:")
+    logging.info(" - Worker connections: %d", workers)
+    logging.info(" - Block size: %d bytes", block_size)
+    logging.info(" - Total bytes per connection: %d", total_bytes)
+    logging.info(" - Server host: %s", server_host)
+    logging.info(" - Server port: %d", server_port)
+    logging.info(" - Listener host: %s", listener_host)
+    logging.info(" - Listener port: %d", listener_port)
+    logging.info("======================================")
+
+
+# -----------------------------
+# Benchmark Summary Function (Printed after the test)
 # -----------------------------
 def summarize_list(times_list):
     """Return average, min, max, and variance of a list of floats."""
@@ -561,6 +589,17 @@ async def async_main(
     log_file: str = None,
 ) -> None:
     setup_logging(log_file)
+
+    # Print the header with full CLI details at the start.
+    print_benchmark_header(
+        workers,
+        block_size,
+        total_bytes,
+        server_host,
+        server_port,
+        listener_host,
+        listener_port,
+    )
 
     # Expected total bytes per direction across all endpoints.
     # Each tunnel connection has two endpoints, so the global totals will be 2 * workers * total_bytes.

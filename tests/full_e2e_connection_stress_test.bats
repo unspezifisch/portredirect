@@ -74,7 +74,7 @@ run_stress_test() {
     fi
 
     local log_file="$LOG_DIR/cst_${mode}_${suffix}.log"
-    run python3 ./tests/connection_stress_test.py --server-port "$server_port" --listener-port "$listener_port" \
+    run python3 ./utils/connection_stress_test.py --server-port "$server_port" --listener-port "$listener_port" \
         --log-file "$log_file" \
         --workers "$workers" \
         --total-bytes "$total_bytes"

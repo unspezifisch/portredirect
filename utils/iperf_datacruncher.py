@@ -22,6 +22,11 @@ import matplotlib.pyplot as plt
 def extract_throughput(intervals):
     """
     Extract mid-times and throughput (Mbps) from iperf3 intervals.
+
+    :param intervals: List of interval dictionaries from the iperf3 JSON.
+    :return: (times, throughput) where:
+        - times is a list of midpoints of each interval (in seconds)
+        - throughput is a list of throughput values in Mbps
     """
     times = []
     throughput = []
@@ -40,6 +45,11 @@ def extract_throughput(intervals):
 def extract_rtt(intervals):
     """
     Extract mid-times and average RTT (ms) from iperf3 intervals.
+
+    :param intervals: List of interval dictionaries from the iperf3 JSON.
+    :return: (times, rtts) where:
+        - times is a list of midpoints of each interval (in seconds)
+        - rtts is a list of average RTT values (in milliseconds)
     """
     times = []
     rtts = []
@@ -53,7 +63,12 @@ def extract_rtt(intervals):
         end = sum_data.get("end", 0)
         mid = (start + end) / 2
         times.append(mid)
-        rtts.append(avg_rtt)
+        # Convert rtt from microseconds to milliseconds
+        if avg_rtt is not None:
+            avg_rtt_ms = avg_rtt / 1000.0
+        else:
+            avg_rtt_ms = None
+        rtts.append(avg_rtt_ms)
     return times, rtts
 
 
@@ -61,6 +76,9 @@ def label_from_filename(filepath):
     """
     Derive a label from the filename. If the filename contains 'baseline' or 'tunneled',
     use that; and append 'Forward' or 'Reverse' based on the presence of '_R'.
+
+    :param filepath: Full path to the JSON file.
+    :return: A string label describing the test (e.g. "Baseline Forward", "Tunneled Reverse", etc.)
     """
     base = os.path.basename(filepath)
     if "baseline" in base:
@@ -81,11 +99,14 @@ def label_from_filename(filepath):
 def load_data(json_file):
     """
     Load a JSON file and extract throughput and RTT data.
-    Returns:
-      t_th: list of time points for throughput
-      throughput: list of throughput values (Mbps)
-      t_rtt: list of time points for RTT
-      rtt: list of RTT values (ms)
+
+    :param json_file: Path to the iperf3 JSON file.
+    :return: (t_th, throughput, t_rtt, rtt) where:
+        - t_th: list of time points for throughput
+        - throughput: list of throughput values (Mbps)
+        - t_rtt: list of time points for RTT
+        - rtt: list of RTT values (ms)
+      or None if there's an error or no intervals.
     """
     try:
         with open(json_file, "r") as f:
@@ -93,16 +114,25 @@ def load_data(json_file):
     except Exception as e:
         print(f"Error loading {json_file}: {e}")
         return None
+
     intervals = data.get("intervals", [])
     if not intervals:
         print(f"No interval data in {json_file}")
         return None
+
     t_th, throughput = extract_throughput(intervals)
     t_rtt, rtt = extract_rtt(intervals)
     return t_th, throughput, t_rtt, rtt
 
 
 def main():
+    """
+    Main entry point for the script:
+      1. Parse arguments
+      2. Load JSON data
+      3. Plot throughput comparisons (Forward vs Reverse)
+      4. Plot RTT comparisons (all in one plot)
+    """
     parser = argparse.ArgumentParser(
         description="Compare iperf3 throughput and RTT across multiple JSON files."
     )
@@ -113,46 +143,57 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # Group throughput curves by direction.
+    # Group throughput curves by direction
     forward_throughput = []
     reverse_throughput = []
-    # For RTT, collect all curves in a single list.
+    # For RTT, collect all curves in a single list
     all_rtt = []
 
+    # Load data from each JSON file and categorize it
     for json_file in args.json_files:
         data = load_data(json_file)
         if data is None:
             continue
         t_th, throughput, t_rtt, rtt = data
         label = label_from_filename(json_file)
+
         if "Reverse" in label:
             reverse_throughput.append((label, t_th, throughput))
         else:
             forward_throughput.append((label, t_th, throughput))
+
         all_rtt.append((label, t_rtt, rtt))
 
     # ----- Throughput Comparison Plot -----
     fig, (ax_fwd, ax_rev) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
     fig.suptitle("iperf3 Throughput Comparison (Mbps)", fontsize=16)
 
+    # Forward
     if forward_throughput:
         for label, t, th in forward_throughput:
-            ax_fwd.plot(t, th, marker="o", label=label)
+            ax_fwd.plot(t, th, marker="o", markersize=6, alpha=0.9, label=label)
         ax_fwd.set_title("Forward")
         ax_fwd.set_xlabel("Time (s)")
         ax_fwd.set_ylabel("Throughput (Mbps)")
         ax_fwd.grid(True)
         ax_fwd.legend()
+        # Force x=0 and y=0 to appear
+        ax_fwd.set_xlim(left=0)
+        ax_fwd.set_ylim(bottom=0)
     else:
         ax_fwd.text(0.5, 0.5, "No Forward Data", ha="center", va="center")
 
+    # Reverse
     if reverse_throughput:
         for label, t, th in reverse_throughput:
-            ax_rev.plot(t, th, marker="o", label=label)
+            ax_rev.plot(t, th, marker="x", markersize=6, alpha=0.9, label=label)
         ax_rev.set_title("Reverse")
         ax_rev.set_xlabel("Time (s)")
         ax_rev.grid(True)
         ax_rev.legend()
+        # Force x=0 and y=0 to appear
+        ax_rev.set_xlim(left=0)
+        ax_rev.set_ylim(bottom=0)
     else:
         ax_rev.text(0.5, 0.5, "No Reverse Data", ha="center", va="center")
 
@@ -162,25 +203,80 @@ def main():
     plt.close(fig)
     print(f"Saved throughput comparison plot to {throughput_file}")
 
-    # ----- RTT Comparison Plot -----
+    # ----- RTT Comparison Plot (Linear Scale) -----
     fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle("iperf3 RTT Comparison (ms)", fontsize=16)
+    fig.suptitle("iperf3 RTT Comparison (ms) - Linear Scale", fontsize=16)
 
     if all_rtt:
         for label, t, r in all_rtt:
-            ax.plot(t, r, marker="o", label=label)
+            # Skip plotting if all RTT values are None
+            if all(rr is None for rr in r):
+                continue
+
+            # Use 'x' marker for Reverse tests to distinguish
+            marker_style = "x" if "Reverse" in label else "o"
+
+            ax.plot(
+                t,
+                r,
+                marker=marker_style,
+                alpha=0.8,
+                label=label,
+            )
+
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("RTT (ms)")
         ax.grid(True)
         ax.legend()
+        # Ensure axes start at zero (if applicable)
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
     else:
         ax.text(0.5, 0.5, "No RTT Data", ha="center", va="center")
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    rtt_file = os.path.join(args.out_dir, "comparison_rtt.png")
-    fig.savefig(rtt_file)
+    rtt_linear_file = os.path.join(args.out_dir, "comparison_rtt.png")
+    fig.savefig(rtt_linear_file)
     plt.close(fig)
-    print(f"Saved RTT comparison plot to {rtt_file}")
+    print(f"Saved RTT comparison plot (linear scale) to {rtt_linear_file}")
+
+    # ----- RTT Comparison Plot (Logarithmic Scale) -----
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle("iperf3 RTT Comparison (ms) - Log Scale", fontsize=16)
+
+    if all_rtt:
+        for label, t, r in all_rtt:
+            # Skip plotting if all RTT values are None
+            if all(rr is None for rr in r):
+                continue
+
+            # Use 'x' marker for Reverse tests to distinguish
+            marker_style = "x" if "Reverse" in label else "o"
+
+            ax.plot(
+                t,
+                r,
+                marker=marker_style,
+                alpha=0.8,
+                label=label,
+            )
+
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("RTT (ms)")
+        ax.grid(True)
+        ax.legend()
+        ax.set_xlim(left=0)
+        # no ylim 0 for log ;)
+        # Use a logarithmic scale for the y-axis.
+        ax.set_yscale("log")
+    else:
+        ax.text(0.5, 0.5, "No RTT Data", ha="center", va="center")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    rtt_log_file = os.path.join(args.out_dir, "comparison_rtt_log.png")
+    fig.savefig(rtt_log_file)
+    plt.close(fig)
+    print(f"Saved RTT comparison plot (log scale) to {rtt_log_file}")
 
 
 if __name__ == "__main__":

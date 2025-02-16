@@ -78,16 +78,16 @@ teardown() {
 }
 
 @test "Baseline iperf3 test (direct connection)" {
-    run iperf3 -c 127.0.0.1 -p 5201
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 5201 | tee \"$LOG_DIR/iperf3_baseline_client.json\""
     [ "$status" -eq 0 ]
-    run iperf3 -c 127.0.0.1 -p 5201 -R
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 5201 -R | tee \"$LOG_DIR/iperf3_baseline_client_R.json\""
     [ "$status" -eq 0 ]
 }
 
 @test "Tunneled iperf3 test (via portredirect)" {
-    run iperf3 -c 127.0.0.1 -p 10001
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 | tee \"$LOG_DIR/iperf3_tunneled_client.json\""
     [ "$status" -eq 0 ]
-    run iperf3 -c 127.0.0.1 -p 10001 -R
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -R | tee \"$LOG_DIR/iperf3_tunneled_client_R.json\""
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs
@@ -102,9 +102,9 @@ teardown() {
 }
 
 @test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
-    run iperf3 -c 127.0.0.1 -p 10001 -P 20
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P 20 | tee \"$LOG_DIR/iperf3_tunneled_client_parallel.json\""
     [ "$status" -eq 0 ]
-    run iperf3 -c 127.0.0.1 -p 10001 -P 20 -R
+    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P 20 -R | tee \"$LOG_DIR/iperf3_tunneled_client_parallel_R.json\""
     [ "$status" -eq 0 ]
 
     # Check that no ERROR occurred in the portredirect logs

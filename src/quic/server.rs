@@ -8,7 +8,7 @@ use anyhow::{Context, Error, Result};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::{
     get_config_dir,

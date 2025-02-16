@@ -17,18 +17,21 @@ if [ ! -d "$DOCS_DIR" ]; then
     exit 1
 fi
 
-# Note these graphs for the two binaries are currently kinda useless.
-FLAGS="--no-fns --no-sysroot --no-traits"
+if false; then
+    #XXX disabled useless graphs
+    # Note these graphs for the two binaries are currently kinda useless.
+    FLAGS="--no-fns --no-sysroot --no-traits"
 
-# Generate dependency graph for the server binary
-echo "Generating dependency graph for portredirect_server binary..."
-cargo modules dependencies --bin portredirect_server $FLAGS >"$DOCS_DIR/cargo-mods-server.dot"
-echo "Saved to $DOCS_DIR/cargo-mods-server.dot"
+    # Generate dependency graph for the server binary
+    echo "Generating dependency graph for portredirect_server binary..."
+    cargo modules dependencies --bin portredirect_server $FLAGS >"$DOCS_DIR/cargo-mods-server.dot"
+    echo "Saved to $DOCS_DIR/cargo-mods-server.dot"
 
-# Generate dependency graph for the client binary
-echo "Generating dependency graph for portredirect_client binary..."
-cargo modules dependencies --bin portredirect_client $FLAGS >"$DOCS_DIR/cargo-mods-client.dot"
-echo "Saved to $DOCS_DIR/cargo-mods-client.dot"
+    # Generate dependency graph for the client binary
+    echo "Generating dependency graph for portredirect_client binary..."
+    cargo modules dependencies --bin portredirect_client $FLAGS >"$DOCS_DIR/cargo-mods-client.dot"
+    echo "Saved to $DOCS_DIR/cargo-mods-client.dot"
+fi
 
 FLAGS="--no-externs --no-fns --no-sysroot --no-traits --no-types --no-uses"
 

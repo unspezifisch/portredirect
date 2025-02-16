@@ -205,7 +205,7 @@ def main():
 
     # ----- RTT Comparison Plot (Linear Scale) -----
     fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle("iperf3 RTT Comparison (ms) - Linear Scale", fontsize=16)
+    fig.suptitle("iperf3 RTT Comparison (ms)", fontsize=16)
 
     if all_rtt:
         for label, t, r in all_rtt:
@@ -242,7 +242,7 @@ def main():
 
     # ----- RTT Comparison Plot (Logarithmic Scale) -----
     fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle("iperf3 RTT Comparison (ms) - Log Scale", fontsize=16)
+    fig.suptitle("iperf3 RTT Comparison (ms)", fontsize=16)
 
     if all_rtt:
         for label, t, r in all_rtt:

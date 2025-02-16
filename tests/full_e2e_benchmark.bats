@@ -101,19 +101,26 @@ teardown() {
     fi
 }
 
-@test "Tunneled iperf3 test (via portredirect) parallel heavy load test" {
-    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P 20 | tee \"$LOG_DIR/iperf3_tunneled_client_parallel.json\""
-    [ "$status" -eq 0 ]
-    run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P 20 -R | tee \"$LOG_DIR/iperf3_tunneled_client_parallel_R.json\""
-    [ "$status" -eq 0 ]
+@test "Tunneled iperf3 test varying parallel connections (1 to 1000)" {
+    # Define a list of parallel connection counts.
+    # Adjust or expand the list as needed to gather the desired data points.
+    for p in 1 10 20 50 100 200 500 1000; do
+        echo "Running test with $p parallel connections"
+        # Forward test
+        run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P $p | tee \"$LOG_DIR/iperf3_tunneled_client_parallel_${p}.json\""
+        [ "$status" -eq 0 ]
+        # Reverse test
+        run bash -c "iperf3 -J -c 127.0.0.1 -p 10001 -P $p -R | tee \"$LOG_DIR/iperf3_tunneled_client_parallel_R_${p}.json\""
+        [ "$status" -eq 0 ]
 
-    # Check that no ERROR occurred in the portredirect logs
-    if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
-        echo "ERROR found in server log"
-        exit 1
-    fi
-    if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
-        echo "ERROR found in client log"
-        exit 1
-    fi
+        # Check that no ERROR occurred in the portredirect logs for this iteration
+        if grep -q "ERROR" "$LOG_DIR/portredirect_server.log"; then
+            echo "ERROR found in server log for $p parallel connections"
+            exit 1
+        fi
+        if grep -q "ERROR" "$LOG_DIR/portredirect_client.log"; then
+            echo "ERROR found in client log for $p parallel connections"
+            exit 1
+        fi
+    done
 }

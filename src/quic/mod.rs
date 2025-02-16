@@ -7,13 +7,23 @@ use quinn::TransportConfig;
 pub mod client;
 pub mod server;
 
-pub const ALPN_QUIC_PORTREDIRECT: &[&[u8]] = &[b"pr-1"]; // QUIC ALPN field: port redirect protocol v1
+// QUIC ALPN field: port redirect protocol v1
+pub const ALPN_QUIC_PORTREDIRECT: &[&[u8]] = &[b"pr-1"];
 
 pub fn configure_transport_config(transport_config: &mut TransportConfig) {
     // QUIC connection advanced configuration
-    transport_config.max_concurrent_uni_streams(1_u8.into()); // Not used at all by us, set lowest limit
-    transport_config.max_concurrent_bidi_streams(0_u8.into()); // We manage our own connection limit
-    transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(25))); // 30s timeout is QUIC's default timeout
-    transport_config.crypto_buffer_size(crate::PortRedirectProtocol::QUIC_CRYPTO_BUFFER_SIZE);
-    transport_config.allow_spin(false); // We don't want to "sacrifice privacy" to more easily measure latency
+    
+    transport_config.send_fairness(false);
+
+    // We manage our own connection limit
+    transport_config.max_concurrent_uni_streams(1_u8.into());
+    transport_config.max_concurrent_bidi_streams(0_u8.into());
+
+    // 30s timeout is QUIC's default timeout
+    transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(25)));
+
+    //transport_config.crypto_buffer_size(crate::PortRedirectProtocol::QUIC_CRYPTO_BUFFER_SIZE);
+
+    // We don't want to "sacrifice privacy" to more easily measure latency
+    transport_config.allow_spin(false);
 }

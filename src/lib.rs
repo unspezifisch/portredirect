@@ -30,7 +30,7 @@ pub struct PortRedirectProtocol;
 
 impl PortRedirectProtocol {
     pub const CONNECTION_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
-    pub const CONNECTION_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(60);
+    pub const CONNECTION_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(5);
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
 
     pub const QUIC_STREAM_READ_BUFFER_SIZE: usize = 256 * 1024; // 256 KiB

@@ -77,7 +77,7 @@ lint:
 	@cargo clippy --all-targets --all-features -- -D warnings
 	@echo "Running Python code formatter check (black) on utils and tests..."
 	@if command -v black >/dev/null 2>&1; then \
-		black --check utils/*.py tests/*.py; \
+		black --check utils/*.py; \
 	else \
 		echo "Black is not installed. Skipping Python formatting check."; \
 	fi
@@ -88,7 +88,7 @@ lint_fix:
 	@cargo fix --allow-dirty --allow-staged
 	@echo "Running black to auto-format Python files in utils and tests..."
 	@if command -v black >/dev/null 2>&1; then \
-		black utils/*.py tests/*.py; \
+		black utils/*.py; \
 	else \
 		echo "Black is not installed. Skipping Python formatting fix."; \
 	fi

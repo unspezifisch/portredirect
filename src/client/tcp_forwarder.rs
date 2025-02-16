@@ -27,7 +27,7 @@ where
         .await
         .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
-    let stream_name = format!("Client-A:TCP|B:QUIC({})", quic_stream.to_string());
+    let stream_name = format!("Client-A:TCP|B:QUIC({})", quic_stream);
     debug!(
         "Starting TCP<->QUIC stream handler, stream id {}",
         stream_name.clone()

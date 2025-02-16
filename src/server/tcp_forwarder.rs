@@ -22,7 +22,7 @@ where
     let dummy_counter_a = DummyCounter::new();
     let dummy_counter_b = DummyCounter::new();
 
-    let stream_name = format!("Server-A:TCP|B:QUIC({})", quic_stream.to_string());
+    let stream_name = format!("Server-A:TCP|B:QUIC({})", quic_stream);
     debug!(
         "Starting TCP<->QUIC stream handler, stream id {}",
         stream_name.clone()

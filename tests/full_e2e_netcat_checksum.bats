@@ -18,10 +18,10 @@ setup() {
     LOG_DIR=$(mktemp -p ./testlogs -d "${LOG_NAME}_$(date +%Y%m%d-%H%M%S).XXXXXX")
 
     # Build the project
-    cargo build
+    cargo build --release
 
     # Start portredirect server in background
-    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_server \
+    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_server \
         --local-host 127.0.0.1 --local-port 10002 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
@@ -31,7 +31,7 @@ setup() {
     sleep 1
 
     # Start portredirect client in background
-    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/debug/portredirect_client \
+    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_client \
         --destination-host 127.0.0.1 --destination-port 1234 \
         --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
         --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \

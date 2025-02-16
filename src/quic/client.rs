@@ -5,12 +5,11 @@
 // Original: https://github.com/quinn-rs/quinn/blob/204b14792b5e92eb2c43cdb1ff05426412ff4466/quinn/examples/client.rs
 
 use anyhow::{anyhow, Error, Result};
-use quinn::{crypto::rustls::QuicClientConfig, TransportConfig};
+use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, error, info, instrument};
 
-use crate::quic::configure_transport_config;
 
 use super::ALPN_QUIC_PORTREDIRECT;
 

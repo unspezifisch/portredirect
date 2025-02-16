@@ -8,6 +8,48 @@ use tracing::info;
 
 use crate::metrics_helper::MetricsCounter;
 
+/// Forwards data bidirectionally between two asynchronous streams.
+///
+/// This function copies data between two streams concurrently using a fixed buffer size defined by
+/// `PortRedirectProtocol::QUIC_STREAM_READ_BUFFER_SIZE`. As data is transferred, the provided counters
+/// are incremented by the number of bytes forwarded in each direction. If the copy completes without
+/// errors, the function returns `Ok(())`. If an error occurs, it is wrapped with additional context.
+/// However, if the error message contains `"error 0"`, this is interpreted as a graceful shutdown,
+/// and the function returns success.
+///
+/// # Parameters
+///
+/// - `a`: A mutable reference to the first stream implementing both `AsyncRead` and `AsyncWrite`.
+/// - `b`: A mutable reference to the second stream implementing both `AsyncRead` and `AsyncWrite`.
+/// - `id`: A stream identifier (displayable) used for logging purposes.
+/// - `stream_a_counter`: A counter that is incremented by the number of bytes read from stream A.
+/// - `stream_b_counter`: A counter that is incremented by the number of bytes read from stream B.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the bidirectional copy completes (or a graceful shutdown is detected),
+/// or an error wrapped with context if a non-graceful error occurs.
+///
+/// # Errors
+///
+/// If the underlying I/O operations fail with an error that does **not** contain `"error 0"` in its
+/// description, an error with additional context `"Bidirectional copy failed"` is returned.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use portredirect::forward::forward_bidirectional;
+/// # use portredirect::metrics_helper::DummyCounter;
+/// # use tokio::io::{duplex, AsyncRead, AsyncWrite};
+/// # #[tokio::main]
+/// # async fn main() -> anyhow::Result<()> {
+/// let (mut a, mut b) = duplex(64);
+/// let counter_a = DummyCounter::new();
+/// let counter_b = DummyCounter::new();
+/// forward_bidirectional(&mut a, &mut b, "stream1", &counter_a, &counter_b).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn forward_bidirectional<StreamA, StreamB, StreamName, CounterA, CounterB>(
     a: &mut StreamA,
     b: &mut StreamB,
@@ -35,28 +77,35 @@ where
             );
             Ok(())
         }
-        Err(err) => Err(err).context("Bidirectional copy terminated"),
+        Err(err) => {
+            // If the error indicates a graceful shutdown, log it and return success.
+            if err.to_string().contains("error 0") {
+                info!("Stream (id={}): graceful shutdown detected: {}", id, err);
+                Ok(())
+            } else {
+                Err(err).context("Bidirectional copy failed")
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::metrics_helper::DummyCounter;
-
     use super::*;
+    use crate::metrics_helper::DummyCounter;
     use anyhow::Result;
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-    // A simple in-memory test stream that has a read buffer and collects written data.
+    /// A simple in-memory test stream that has a read buffer and collects written data.
     #[derive(Debug)]
     struct TestStream {
-        // Data that will be "read" from this stream.
+        /// Data that will be "read" from this stream.
         read_data: Vec<u8>,
-        // Data that has been "written" to this stream.
+        /// Data that has been "written" to this stream.
         write_data: Vec<u8>,
-        // Current read position.
+        /// Current read position.
         pos: usize,
     }
 
@@ -113,7 +162,7 @@ mod tests {
         }
     }
 
-    // A stream that fails immediately when read or written.
+    /// A stream that fails immediately when read or written.
     struct FailingStream;
 
     impl AsyncRead for FailingStream {
@@ -211,8 +260,7 @@ mod tests {
         );
     }
 
-    // A stream that simulates a graceful shutdown error (i.e. returns an error whose
-    // message contains "error 0").
+    /// A stream that simulates a graceful shutdown error by returning errors containing "error 0".
     struct GracefulStream;
 
     impl AsyncRead for GracefulStream {

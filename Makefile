@@ -110,7 +110,7 @@ test: test_cargo test_python test_bats
 # Run BATS tests.
 test_bats:
 	@echo "Running BATS tests..."
-	@bats test/
+	@bats tests/
 
 # Run Cargo tests.
 # * (This target is called by CI as well.)

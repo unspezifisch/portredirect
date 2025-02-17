@@ -209,6 +209,20 @@ def main():
     else:
         ax_rev.text(0.5, 0.5, "No Reverse Data", ha="center", va="center")
 
+    # After plotting the data on both subplots, compute the overall maximum throughput
+    all_throughput_values = []
+    for _, _, th in forward_throughput + reverse_throughput:
+        all_throughput_values.extend(th)
+
+    if all_throughput_values:
+        # Compute maximum and add a 10% margin
+        max_val = max(all_throughput_values)
+        y_max = max_val * 1.1
+
+        # Set the same y-axis limits on both subplots
+        ax_fwd.set_ylim(0, y_max)
+        ax_rev.set_ylim(0, y_max)
+
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     throughput_file = os.path.join(args.out_dir, "comparison_throughput.png")
     fig.savefig(throughput_file)

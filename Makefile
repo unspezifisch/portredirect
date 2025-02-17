@@ -67,12 +67,12 @@ docs:
 # * (This target is called by CI as well.)
 build:
 	@echo "Building Cargo project (debug mode)..."
-	@cargo build
+	@cargo build $(ARGS)
 
 # Build the Cargo project in release mode.
 release:
 	@echo "Building Cargo project (release mode)..."
-	@cargo build --release
+	@cargo build --release $(ARGS)
 	@ls -lh target/release
 
 # ------------------------------
@@ -110,13 +110,18 @@ test: test_cargo test_python test_bats
 # Run BATS tests.
 test_bats:
 	@echo "Running BATS tests..."
-	@bats tests/
+	@bats tests/ $(ARGS)
 
 # Run Cargo tests.
 # * (This target is called by CI as well.)
 test_cargo:
 	@echo "Running Cargo tests..."
-	@cargo test
+	@cargo test $(ARGS)
+
+# Run Cargo tests with Backtrace enabled.
+test_cargo_debug:
+	@echo "Running Cargo tests..."
+	@RUST_BACKTRACE=full RUST_LOG=tracing=debug cargo test $(ARGS)
 
 # Run Python unit tests.
 # * (This target is called by CI as well.)

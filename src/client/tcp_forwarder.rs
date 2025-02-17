@@ -6,12 +6,12 @@ use crate::app_data::ClientAppData;
 use crate::forward::forward_bidirectional;
 use crate::quic::client::ClientConfig;
 
+use super::metrics_counter::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
+
 use anyhow::{anyhow, Error, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, instrument};
-
-use super::metrics::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
 
 // Handles individual QUIC streams.
 #[instrument[skip(config, quic_stream)]]

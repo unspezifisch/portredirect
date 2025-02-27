@@ -1,4 +1,4 @@
-// PortRedirector-RS Server - QUIC client handler
+// PortRedirect Server - QUIC client handler
 //
 // License: GPL-3.0-only
 

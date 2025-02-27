@@ -1,4 +1,4 @@
-// PortRedirector-RS Client - Main Binary Entry Point
+// PortRedirect Client - Main Binary Entry Point
 //
 // License: GPL-3.0-only
 

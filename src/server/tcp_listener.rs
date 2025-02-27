@@ -1,4 +1,4 @@
-// PortRedirector-RS Server - Listener for TCP connections
+// PortRedirect Server - Listener for TCP connections
 //
 // License: GPL-3.0-only
 

@@ -1,4 +1,4 @@
-// PortRedirector-RS Client - Prometheus Metrics
+// PortRedirect Client - Prometheus Metrics
 // This module provides a Prometheus metrics endpoint and global counters for instrumentation.
 //
 // License: GPL-3.0-only

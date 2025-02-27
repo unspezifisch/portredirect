@@ -1,4 +1,4 @@
-// PortRedirector-RS Server - Authenticate client to server
+// PortRedirect Server - Authenticate client to server
 //
 // License: GPL-3.0-only
 

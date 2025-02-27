@@ -1,4 +1,4 @@
-// PortRedirector-RS Client
+// PortRedirect Client
 //
 // License: GPL-3.0-only
 

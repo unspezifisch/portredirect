@@ -2,5 +2,9 @@
     "files.autoSave": "onFocusChange",
     "editor.renderWhitespace": "selection",
     "editor.formatOnSave": true,
-    "editor.formatOnSaveMode": "modificationsIfAvailable"
+    "editor.formatOnSaveMode": "modificationsIfAvailable",
+    "cSpell.language": "en",
+    "cSpell.words": [
+        "quic"
+    ]
 }

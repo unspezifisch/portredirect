@@ -1,4 +1,4 @@
-// PortRedirector-RS Common Client Code
+// PortRedirect Common Client Code
 //
 // License: GPL-3.0-only
 // Based on: Quinn example code (originally licensed under Apache-2.0/MIT)

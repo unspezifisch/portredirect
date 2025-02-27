@@ -1,4 +1,4 @@
-// PortRedirector-RS Server - Bridge TCP to QUIC stream
+// PortRedirect Server - Bridge TCP to QUIC stream
 //
 // License: GPL-3.0-only
 

@@ -1,4 +1,4 @@
-// PortRedirector-RS Client - Handle connection to QUIC/PRRS server
+// PortRedirect Client - Handle connection to QUIC/PRRS server
 //
 // License: GPL-3.0-only
 

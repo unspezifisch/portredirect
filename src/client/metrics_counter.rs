@@ -1,4 +1,4 @@
-// PortRedirector-RS Client - Prometheus Metrics Counters
+// PortRedirect Client - Prometheus Metrics Counters
 //
 // License: GPL-3.0-only
 

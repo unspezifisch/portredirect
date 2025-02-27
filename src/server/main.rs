@@ -45,7 +45,7 @@ struct Args {
     quic_server_port: u16,
 
     /// QUIC server certificate Subject Alt Name.
-    #[clap(long, default_value = "localhost")]
+    #[clap(long, default_value = "127.0.0.1")]
     quic_cert_hostname: String,
 
     /// Pre-shared key for authentication over QUIC.

@@ -1,4 +1,4 @@
-// PortRedirect-RS Protocol Module
+// PortRedirect Protocol Module
 //
 // The idea behind PRRS authentication is:
 // - The server is trusted by the client because it has the right public certificate matching our configuration file.

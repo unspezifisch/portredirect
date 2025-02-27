@@ -15,7 +15,7 @@ Both use a pre-shared key (PSK) for authentication and auto-generate certificate
 
 ### **Bling:**
 
-[![codecov](https://codecov.io/gh/unspezifisch/portredirect-rs/graph/badge.svg?token=TJSQNU6NMR)](https://codecov.io/gh/unspezifisch/portredirect-rs)
+[![codecov](https://codecov.io/gh/unspezifisch/portredirect/graph/badge.svg?token=TJSQNU6NMR)](https://codecov.io/gh/unspezifisch/portredirect)
 
 ### Concept
 
@@ -106,7 +106,7 @@ openssl rand -hex 32
 
 ## Authentication & Certificate Verification
 
-PortRedirect-RS secures QUIC tunnels using auto-generated certificates and a PSK-based challenge-response system. The client verifies the server’s certificate, while the server challenges the client to prove its identity with the shared PSK.
+PortRedirect secures QUIC tunnels using auto-generated certificates and a PSK-based challenge-response system. The client verifies the server’s certificate, while the server challenges the client to prove its identity with the shared PSK.
 
 ## Running Tests
 
@@ -149,7 +149,7 @@ For a complete list of options:
 
 ## Overview & Limitations
 
-PortRedirect-RS is ideal for simple TCP-to-QUIC tunneling setups:
+PortRedirect is ideal for simple TCP-to-QUIC tunneling setups:
 
 - **Protocol Support:** Currently supports IPv4 and TCP.
 - **Connection Model:** Designed for one-to-one QUIC connections between server and client, with the possibility of extending this in the future.

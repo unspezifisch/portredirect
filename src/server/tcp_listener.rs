@@ -8,6 +8,7 @@ use crate::{app_data::ServerAppData, quic::server::ServerConfig};
 
 use anyhow::{anyhow, Result};
 use std::{sync::Arc, time::Instant};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::{debug, error, info, instrument, warn};
@@ -22,7 +23,7 @@ pub async fn handle_tcp_listener(
 
     loop {
         // Accept new external TCP connection.
-        let (tcp_stream, peer_addr) = match listener.accept().await {
+        let (mut tcp_stream, peer_addr) = match listener.accept().await {
             Ok(conn) => conn,
             Err(e) => {
                 error!("Failed to accept TCP connection: {}", e);
@@ -36,7 +37,9 @@ pub async fn handle_tcp_listener(
             Some(conn) => conn,
             None => {
                 error!("No active QUIC connection available to handle TCP traffic");
-                // TODO close TCP stream?
+                if let Err(e) = tcp_stream.shutdown().await { // TODO what's the worst case duration of this?
+                    error!("Failed to shutdown TCP stream: {:?}", e);
+                }
                 continue;
             }
         };

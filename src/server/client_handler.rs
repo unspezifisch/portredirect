@@ -25,6 +25,8 @@ pub async fn handle_quic_client_connection(
         conn.remote_address()
     );
 
+    config.app_data.connection = Some(conn.clone()).into(); // TODO add Mutex
+
     // First, ensure the client is authenticated.
     // TODO add timeout for auth
     let control_stream = match authenticate_quic_client(Arc::clone(&config), conn.clone()).await {
@@ -60,7 +62,7 @@ pub async fn handle_quic_client_connection(
 
         tcp_handle
     } else {
-        info!("Additional TCP listeners disabled");
+        info!("Additional TCP listeners not implemented");
         tokio::task::spawn(async { Ok(()) })
     };
 

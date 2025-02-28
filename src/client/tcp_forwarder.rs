@@ -1,19 +1,20 @@
 // PortRedirect Client - Bridge QUIC stream to TCP
+// Note the counterpart in server/tcp_forwarder.rs.
 //
 // License: GPL-3.0-only
+
+use super::metrics_counter::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
 
 use crate::app_data::ClientAppData;
 use crate::forward::forward_bidirectional;
 use crate::quic::client::ClientConfig;
-
-use super::metrics_counter::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
 
 use anyhow::{anyhow, Error, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, instrument};
 
-// Handles individual QUIC streams.
+/// Bridges a QUIC stream to a new TCP connection (client side).
 #[instrument[skip(config, quic_stream)]]
 pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
     config: Arc<ClientConfig<ClientAppData>>,
@@ -22,12 +23,13 @@ pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
 where
     QuicStreamType: AsyncRead + AsyncWrite + Unpin + std::fmt::Display,
 {
-    // Create TCP connection to remote destination
+    // Create client-side TCP connection to the destination
     let mut tcp_stream = tokio::net::TcpStream::connect(&config.app_data.forward_destination)
         .await
         .map_err(|e| anyhow!("failed to connect to destination: {}", e))?;
 
-    let stream_name = format!("Client-A:TCP|B:QUIC({})", quic_stream);
+    // Run QUIC stream handler that forwards TCP connection to server
+    let stream_name = format!("Client-A:TCP-B:QUIC({})", quic_stream);
     debug!(
         "Starting TCP<->QUIC stream handler, stream id {}",
         stream_name.clone()

@@ -19,7 +19,6 @@ use tracing::{debug, error, instrument, warn};
 pub async fn handle_tcp_listener(
     listener: TcpListener,
     app_data: Arc<ServerAppData>,
-    active_connections: Arc<AtomicUsize>,
 ) -> Result<()> {
     loop {
         let (tcp_stream, peer_addr) = match listener.accept().await {
@@ -55,12 +54,8 @@ pub async fn handle_tcp_listener(
         let quic_stream = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
         debug!("Opened QUIC stream (id: {}) for TCP forwarding", stream_id);
 
-        let connections = active_connections.clone();
-
         // Spawn a new task to handle forwarding between TCP and QUIC.
         tokio::spawn(async move {
-            // Increment active connections.
-            connections.fetch_add(1, Ordering::SeqCst);
             let start_time = Instant::now();
 
             if let Err(e) = forward_tcp_to_quic_stream(tcp_stream, quic_stream).await {
@@ -77,8 +72,6 @@ pub async fn handle_tcp_listener(
                 stream_id,
                 start_time.elapsed()
             );
-            // Decrement active connections.
-            connections.fetch_sub(1, Ordering::SeqCst);
         });
     }
 }

@@ -61,6 +61,11 @@ async fn main() -> Result<()> {
     // Create a root span for logging.
     let _root_span = span!(Level::INFO, "prserver_main").entered();
 
+    // Install the default crypto provider for rustls.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+    
     // Retrieve (or create) the configuration directory.
     let config_dir = get_config_dir().context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
@@ -74,10 +79,6 @@ async fn main() -> Result<()> {
     ))
     .context("Failed to resolve QUIC bind address")?;
 
-    // Use an atomic counter for connection statistics.
-    let active_connections = Arc::new(AtomicUsize::new(0));
-    tokio::spawn(report_active_connections(active_connections.clone()));
-
     // Create the TCP listener.
     let listener = TcpListener::bind(&local_addr)
         .await
@@ -86,10 +87,6 @@ async fn main() -> Result<()> {
 
     // Set up QUIC server configuration.
     let app_data = Arc::new(ServerAppData::new(args.quic_psk));
-    // Install the default crypto provider for rustls.
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Failed to install rustls crypto provider");
     info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(
@@ -104,7 +101,7 @@ async fn main() -> Result<()> {
     tokio::spawn(run_quic_server_task(quic_config));
 
     // Start accepting and handling TCP connections.
-    handle_tcp_listener(listener, app_data, active_connections).await
+    handle_tcp_listener(listener, app_data).await
 }
 
 /// Sets up tracing for logging.
@@ -121,19 +118,6 @@ fn resolve_socket_addr(addr: &str) -> Result<SocketAddr> {
     addr.to_socket_addrs()?
         .next()
         .ok_or_else(|| anyhow!("Unable to resolve address: {}", addr))
-}
-
-/// Periodically reports the number of active connections.
-async fn report_active_connections(active_connections: Arc<AtomicUsize>) {
-    let mut previous = 0;
-    loop {
-        sleep(Duration::from_millis(100)).await;
-        let current = active_connections.load(Ordering::Relaxed);
-        if current != previous {
-            info!("Active connections: {}", current);
-            previous = current;
-        }
-    }
 }
 
 /// Runs the QUIC server in its own asynchronous task.

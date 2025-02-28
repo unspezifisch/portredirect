@@ -1,15 +1,17 @@
 // PortRedirect Server - Bridge TCP to QUIC stream
+// Note the counterpart in client/tcp_forwarder.rs.
 //
 // License: GPL-3.0-only
 
+use super::metrics_counter::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
+
 use crate::forward::forward_bidirectional;
-use crate::metrics_helper::DummyCounter;
 
 use anyhow::Result;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, instrument};
 
-/// Handles an incoming TCP connection and forwards it to a QUIC stream.
+/// Forwards an incoming TCP connection to a QUIC stream (server side).
 #[instrument(skip(tcp_stream, quic_stream))]
 pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
     mut tcp_stream: tokio::net::TcpStream,
@@ -18,11 +20,10 @@ pub async fn forward_tcp_to_quic_stream<QuicStreamType>(
 where
     QuicStreamType: AsyncRead + AsyncWrite + Unpin + std::fmt::Display,
 {
-    // HACK until the server gets metrics - Create dummy counters for both directions.
-    let dummy_counter_a = DummyCounter::new();
-    let dummy_counter_b = DummyCounter::new();
+    // On the server side, the TCP stream is already open, as it was externally initiated.
 
-    let stream_name = format!("Server-A:TCP|B:QUIC({})", quic_stream);
+    // Forward TCP connection to client through QUIC stream.
+    let stream_name = format!("Server-A:TCP-B:QUIC({})", quic_stream);
     debug!(
         "Starting TCP<->QUIC stream handler, stream id {}",
         stream_name.clone()
@@ -32,11 +33,15 @@ where
         &mut tcp_stream,  // A
         &mut quic_stream, // B
         stream_name.clone(),
-        &dummy_counter_a,
-        &dummy_counter_b,
+        // Force dereferencing here because the counter is a LazyStatic.
+        &*BYTES_TRANSMITTED_A,
+        &*BYTES_TRANSMITTED_B,
     )
     .await?;
 
-    debug!("Closed TCP<->QUIC stream handler, stream id {}", stream_name);
+    debug!(
+        "Closed TCP<->QUIC stream handler, stream id {}",
+        stream_name
+    );
     Ok(())
 }

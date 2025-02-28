@@ -16,7 +16,7 @@ use tracing::{debug, error, info, instrument};
 // Called by handle_quic_client_connection.
 #[instrument(skip(config, conn))]
 pub async fn handle_quic_client_auth(
-    config: Arc<ServerConfig<Arc<ServerAppData>>>,
+    config: Arc<ServerConfig<ServerAppData>>,
     conn: quinn::Connection,
 ) -> Result<BiStream<Compat<quinn::RecvStream>, Compat<quinn::SendStream>>> {
     debug!("Authenticating PR QUIC client");

@@ -1,4 +1,4 @@
-// PortRedirect Server - Listener for TCP connections
+// PortRedirect Server - Listener for external TCP connections
 //
 // License: GPL-3.0-only
 
@@ -7,7 +7,6 @@ use crate::bi_stream::BiStream;
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
 
 use anyhow::{anyhow, Result};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
@@ -21,6 +20,7 @@ pub async fn handle_tcp_listener(
     app_data: Arc<ServerAppData>,
 ) -> Result<()> {
     loop {
+        // Accept new external TCP connection.
         let (tcp_stream, peer_addr) = match listener.accept().await {
             Ok(conn) => conn,
             Err(e) => {
@@ -31,15 +31,11 @@ pub async fn handle_tcp_listener(
         debug!("Accepted TCP connection from {:?}", peer_addr);
 
         // Try to get the active QUIC connection.
-        let quic_conn = {
-            // Note: If the lock fails, the application will panic.
-            app_data.connection.lock().unwrap().clone()
-        };
-
-        let quic_conn = match quic_conn {
+        let quic_conn = match app_data.connection.as_ref() {
             Some(conn) => conn,
             None => {
                 error!("No active QUIC connection available to handle TCP traffic");
+                // TODO close TCP stream?
                 continue;
             }
         };

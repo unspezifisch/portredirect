@@ -5,21 +5,25 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use portredirect::app_data::ServerAppData;
+use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::server::client_handler::handle_quic_client_connection;
-use portredirect::get_config_dir;
 use portredirect::server::tcp_listener::handle_tcp_listener;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::time::{sleep, Duration};
 use tracing::{error, info, instrument, span, Level};
 
-/// Command-line arguments for the port redirector tool.
+/// Command-line arguments for the server side.
 #[derive(Parser, Debug)]
 struct Args {
+    /// Full path to configuration directory.
+    #[clap(long)]
+    config_dir: Option<String>,
+
     /// Local host to bind the TCP listener.
     #[clap(long)]
     local_host: String,
@@ -65,25 +69,21 @@ async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
-    
+
+    // Parse command-line arguments.
+    let args = Args::parse();
+
     // Retrieve (or create) the configuration directory.
     let config_dir = get_config_dir().context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
 
-    // Parse command-line arguments.
-    let args = Args::parse();
+    // Parse QUIC server listener address.
     let local_addr = format!("{}:{}", args.local_host, args.local_port);
     let quic_addr = resolve_socket_addr(&format!(
         "{}:{}",
         args.quic_server_host, args.quic_server_port
     ))
     .context("Failed to resolve QUIC bind address")?;
-
-    // Create the TCP listener.
-    let listener = TcpListener::bind(&local_addr)
-        .await
-        .with_context(|| format!("Failed to bind TCP listener to {}", local_addr))?;
-    info!("TCP listening on {}", listener.local_addr()?);
 
     // Set up QUIC server configuration.
     let app_data = Arc::new(ServerAppData::new(args.quic_psk));
@@ -97,11 +97,13 @@ async fn main() -> Result<()> {
         app_data.clone(),
     );
 
-    // Spawn the QUIC server task.
-    tokio::spawn(run_quic_server_task(quic_config));
+    // Start QUIC server.
+    run_quic_server(quic_config, handle_quic_client_connection)
+        .await
+        .with_context(|| "PortRedirect Server Error")?;
 
-    // Start accepting and handling TCP connections.
-    handle_tcp_listener(listener, app_data).await
+    info!("PortRedirect Server exited cleanly");
+    Ok(())
 }
 
 /// Sets up tracing for logging.
@@ -118,12 +120,4 @@ fn resolve_socket_addr(addr: &str) -> Result<SocketAddr> {
     addr.to_socket_addrs()?
         .next()
         .ok_or_else(|| anyhow!("Unable to resolve address: {}", addr))
-}
-
-/// Runs the QUIC server in its own asynchronous task.
-#[instrument(skip(quic_config))]
-async fn run_quic_server_task(quic_config: ServerConfig<Arc<ServerAppData>>) {
-    if let Err(e) = run_quic_server(quic_config, handle_quic_client_connection).await {
-        error!(error = %e, "QUIC server encountered an error");
-    }
 }

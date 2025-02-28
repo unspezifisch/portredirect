@@ -11,14 +11,14 @@ use secrecy::SecretString;
 // Storage for application data for handler functions.
 #[derive(Clone, Debug)]
 pub struct ServerAppData {
-    pub connection: Arc<Mutex<Option<quinn::Connection>>>,
+    pub connection: Arc<Option<quinn::Connection>>,
     pub connection_auth_psk: SecretString,
 }
 
 impl ServerAppData {
     pub fn new(connection_auth_psk: SecretString) -> Self {
         ServerAppData {
-            connection: Arc::new(Mutex::new(None)),
+            connection: Arc::new(None),
             connection_auth_psk,
         }
     }

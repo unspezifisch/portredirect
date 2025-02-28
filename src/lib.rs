@@ -15,7 +15,7 @@ pub mod quic;
 pub mod server;
 
 /// Returns the path to the configuration directory, creating it if necessary.
-pub fn get_config_dir() -> Result<PathBuf> {
+pub fn get_config_dir(override_config_dir: Option<String>) -> Result<PathBuf> {
     let mut config_dir =
         dirs::config_dir().context("Failed to find your platform's config directory")?;
     config_dir.push("portredirect");

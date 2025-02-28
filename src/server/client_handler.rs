@@ -16,7 +16,7 @@ use tracing::{debug, instrument};
 // Called by run_quic_server.
 #[instrument(skip(config, conn))]
 pub async fn handle_quic_client_connection(
-    config: Arc<ServerConfig<Arc<ServerAppData>>>,
+    config: Arc<ServerConfig<ServerAppData>>,
     conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
@@ -34,23 +34,18 @@ pub async fn handle_quic_client_connection(
             )
         })?;
 
-    // Store the connection in shared state.
-    // (Assuming that app_data.connection is now a tokio::sync::Mutex<Option<quinn::Connection>>)
-    {
-        let mut quinn_conn = config.app_data.connection.lock().unwrap();
-        *quinn_conn = Some(conn.clone());
-    }
-
     // Run the keepalive (PING/PONG) loop.
     let keepalive_result = run_keepalive_server_loop(auth_stream).await;
 
-    // Clear the stored connection.
-    {
-        let mut quinn_conn = config.app_data.connection.lock().unwrap();
-        *quinn_conn = None;
-    }
+    // Create the TCP listener.
+    let listener = TcpListener::bind(&local_addr)
+        .await
+        .with_context(|| format!("Failed to bind TCP listener to {}", local_addr))?;
+    info!("TCP listening on {}", listener.local_addr()?);
+    
+    // Start accepting and handling TCP connections.
+    handle_tcp_listener(listener, app_data).await;
 
-    // Optionally, gracefully close the connection if supported:
     conn.close(0u32.into(), b"normal shutdown");
 
     keepalive_result

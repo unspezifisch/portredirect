@@ -9,16 +9,22 @@ pub mod app_data;
 pub mod bi_stream;
 pub mod client;
 pub mod forward;
-pub mod metrics_helper; 
+pub mod metrics_helper;
 pub mod protocol;
 pub mod quic;
 pub mod server;
 
 /// Returns the path to the configuration directory, creating it if necessary.
 pub fn get_config_dir(override_config_dir: Option<String>) -> Result<PathBuf> {
-    let mut config_dir =
-        dirs::config_dir().context("Failed to find your platform's config directory")?;
-    config_dir.push("portredirect");
+    // Use the override if provided, otherwise fall back to the platform's config directory.
+    let config_dir = if let Some(override_path) = override_config_dir {
+        PathBuf::from(override_path)
+    } else {
+        let mut config_dir =
+            dirs::config_dir().context("Failed to find your platform's config directory")?;
+        config_dir.push("portredirect");
+        config_dir
+    };
 
     // Create the directory if it doesn't exist
     std::fs::create_dir_all(&config_dir).context("create config dir")?;

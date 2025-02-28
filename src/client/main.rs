@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Get or create configuration directory.
-    let config_dir = get_config_dir()?;
+    let config_dir = get_config_dir(None)?; // HACK None for now.
     info!("Configuration directory: {:?}", config_dir);
 
     // Construct the destination address for tunneled TCP connections.

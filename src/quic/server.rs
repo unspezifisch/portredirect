@@ -11,7 +11,6 @@ use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
-    get_config_dir,
     quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT},
 };
 
@@ -301,10 +300,6 @@ pub fn generate_quic_cert(
     info!("generating self-signed certificate");
     let cert = rcgen::generate_simple_self_signed(vec![cert_alt_name]).unwrap();
     let key = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
-
-    // Create directories if they don't exist.
-    let path = get_config_dir().unwrap();
-    fs::create_dir_all(path).context("failed to create certificate directory")?;
 
     // Write certificate and private key to files.
     let cert = CertificateDer::from(cert.cert);

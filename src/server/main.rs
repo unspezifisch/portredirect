@@ -8,7 +8,6 @@ use portredirect::app_data::ServerAppData;
 use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::server::client_handler::handle_quic_client_connection;
-use portredirect::server::tcp_listener::handle_tcp_listener;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,21 +23,17 @@ struct Args {
     #[clap(long)]
     config_dir: Option<String>,
 
-    /// Local host to bind the TCP listener.
+    /// TCP listener host for external connections.
     #[clap(long)]
     local_host: String,
 
-    /// Local port to bind the TCP listener.
+    /// TCP listener port for external connections.
     #[clap(long)]
     local_port: u16,
 
-    /// Remote host to forward traffic to.
+    /// Allow clients to create additional TCP listeners for external connections.
     #[clap(long)]
-    remote_host: Option<String>,
-
-    /// Remote port to forward traffic to.
-    #[clap(long)]
-    remote_port: Option<u16>,
+    clients_additional_listeners: bool,
 
     /// QUIC server listener host.
     #[clap(long, default_value = "127.0.0.1")]
@@ -74,11 +69,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Retrieve (or create) the configuration directory.
-    let config_dir = get_config_dir().context("Failed to get configuration directory")?;
+    let config_dir =
+        get_config_dir(args.config_dir).context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
 
     // Parse QUIC server listener address.
-    let local_addr = format!("{}:{}", args.local_host, args.local_port);
+    let local_addr = resolve_socket_addr(&format!("{}:{}", args.local_host, args.local_port));
     let quic_addr = resolve_socket_addr(&format!(
         "{}:{}",
         args.quic_server_host, args.quic_server_port
@@ -86,7 +82,7 @@ async fn main() -> Result<()> {
     .context("Failed to resolve QUIC bind address")?;
 
     // Set up QUIC server configuration.
-    let app_data = Arc::new(ServerAppData::new(args.quic_psk));
+    let app_data = Arc::new(ServerAppData::new(args.quic_psk, local_addr));
     info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(

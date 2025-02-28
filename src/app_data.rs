@@ -11,15 +11,26 @@ use secrecy::SecretString;
 // Storage for application data for handler functions.
 #[derive(Clone, Debug)]
 pub struct ServerAppData {
+    // TODO Arc still needed? Variable still needed??
     pub connection: Arc<Option<quinn::Connection>>,
+
+    // PSK for authenticating client connections.
     pub connection_auth_psk: SecretString,
+
+    // TCP listener to create when the client says it wants the default one.
+    pub default_tcp_listener: SocketAddr,
+
+    // Whether to allow clients to create additional TCP listeners.
+    pub clients_additional_listeners: bool,
 }
 
 impl ServerAppData {
-    pub fn new(connection_auth_psk: SecretString) -> Self {
+    pub fn new(connection_auth_psk: SecretString, default_tcp_listener: SocketAddr) -> Self {
         ServerAppData {
             connection: Arc::new(None),
             connection_auth_psk,
+            default_tcp_listener,
+            clients_additional_listeners: false,
         }
     }
 }

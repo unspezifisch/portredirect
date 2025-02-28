@@ -2,22 +2,21 @@
 //
 // License: GPL-3.0-only
 
-use crate::app_data::ServerAppData;
+use crate::{app_data::ServerAppData, quic::server::ServerConfig};
 use crate::bi_stream::BiStream;
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
 
 use anyhow::{anyhow, Result};
-use std::sync::Arc;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use tokio::net::TcpListener;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::{debug, error, instrument, warn};
 
 /// Accepts TCP connections and bridges them to QUIC.
-#[instrument(skip(listener, app_data))]
+#[instrument(skip(listener, config))]
 pub async fn handle_tcp_listener(
+    config: Arc<ServerConfig<ServerAppData>>,
     listener: TcpListener,
-    app_data: Arc<ServerAppData>,
 ) -> Result<()> {
     loop {
         // Accept new external TCP connection.
@@ -31,7 +30,7 @@ pub async fn handle_tcp_listener(
         debug!("Accepted TCP connection from {:?}", peer_addr);
 
         // Try to get the active QUIC connection.
-        let quic_conn = match app_data.connection.as_ref() {
+        let quic_conn = match config.app_data.connection.as_ref() {
             Some(conn) => conn,
             None => {
                 error!("No active QUIC connection available to handle TCP traffic");

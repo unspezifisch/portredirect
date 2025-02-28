@@ -5,8 +5,13 @@
     "editor.formatOnSaveMode": "modificationsIfAvailable",
     "cSpell.language": "en",
     "cSpell.words": [
+        "addrs",
+        "Addrs",
+        "keepalive",
         "portredirect",
+        "prserver",
         "quic",
+        "quinn",
         "rustls"
     ]
 }

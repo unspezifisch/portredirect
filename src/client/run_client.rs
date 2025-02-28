@@ -57,7 +57,7 @@ pub async fn run_client(
     }
 
     // Get or create configuration directory.
-    let config_dir = get_config_dir()?;
+    let config_dir = get_config_dir(None)?; // HACK: None for now.
 
     // Build the QUIC client configuration.
     let quic_client_config = ClientConfig::create_default_config(

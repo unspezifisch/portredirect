@@ -87,7 +87,7 @@ where
 /// incoming PING messages from the remote peer. When a PING is received,
 /// the server replies with a PONG. Any error (read/write, unexpected message,
 /// timeout, or connection close) causes the loop to exit gracefully.
-pub async fn run_keepalive_server_loop<T>(mut auth_stream: T) -> Result<()>
+pub async fn run_control_channel_loop<T>(mut auth_stream: T) -> Result<()>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {

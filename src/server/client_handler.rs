@@ -2,15 +2,15 @@
 //
 // License: GPL-3.0-only
 
-use crate::{app_data::ServerAppData, server::tcp_listener::handle_tcp_listener};
-use crate::protocol::keepalive::run_keepalive_server_loop;
+use crate::protocol::keepalive::run_control_channel_loop;
 use crate::quic::server::ServerConfig;
+use crate::{app_data::ServerAppData, server::tcp_listener::handle_tcp_listener};
 
-use super::auth::handle_quic_client_auth;
+use super::auth::authenticate_quic_client;
 
 use anyhow::{Context, Result};
-use tokio::net::TcpListener;
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tracing::{debug, info, instrument};
 
 // Handles one PR QUIC client connection.
@@ -26,29 +26,55 @@ pub async fn handle_quic_client_connection(
     );
 
     // First, ensure the client is authenticated.
-    let auth_stream = handle_quic_client_auth(Arc::clone(&config), conn.clone())
-        .await
-        .with_context(|| {
-            format!(
+    // TODO add timeout for auth
+    let control_stream = match authenticate_quic_client(Arc::clone(&config), conn.clone()).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            // Terminate the connection upon authentication failure.
+            conn.close(0u32.into(), b"failed authentication");
+            return Err(err).context(format!(
                 "failed to authenticate PR QUIC client from {}",
                 conn.remote_address()
-            )
-        })?;
+            ));
+        }
+    };
 
-    // Run the keepalive (PING/PONG) loop.
-    let keepalive_result = run_keepalive_server_loop(auth_stream).await;
+    // TODO: handle config over control stream (eg. TCP port)
 
     // Create the TCP listener.
-    let tcp_addr = config.app_data.default_tcp_listener;
-    let listener = TcpListener::bind(tcp_addr)
-        .await
-        .with_context(|| format!("Failed to bind TCP listener to {}", tcp_addr))?;
-    info!("TCP listening on {}", listener.local_addr()?);
-    
-    // Start accepting and handling TCP connections.
-    handle_tcp_listener(config, listener).await?;
+    let tcp_handle = if !config.app_data.clients_additional_listeners {
+        let tcp_addr = config.app_data.default_tcp_listener;
+        let listener = match TcpListener::bind(tcp_addr).await {
+            Ok(listener) => listener,
+            Err(err) => {
+                // Terminate the connection upon failure to bind the TCP listener.
+                conn.close(0u32.into(), b"failed binding tcp listener");
+                return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
+            }
+        };
 
+        // Spawn the TCP listener in its own Tokio task.
+        let tcp_config = Arc::clone(&config);
+        let tcp_handle =
+            tokio::spawn(async move { handle_tcp_listener(tcp_config, listener).await });
+
+        tcp_handle
+    } else {
+        info!("Additional TCP listeners disabled");
+        tokio::task::spawn(async { Ok(()) })
+    };
+
+    // Run the keepalive (PING/PONG) loop concurrently.
+    let control_channel_result = run_control_channel_loop(control_stream).await;
+
+    // Close the QUIC connection after the keepalive loop completes.
     conn.close(0u32.into(), b"normal shutdown");
 
-    keepalive_result
+    // TODO add possibility for client to initiate teardown of all TCP connections and the listener, over the control stream
+    // TODO close all TCP connections
+    // TODO tell TCP listener task to quit
+    // Await the TCP listener task.
+    tcp_handle.await??;
+
+    control_channel_result
 }

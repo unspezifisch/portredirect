@@ -2,15 +2,15 @@
 //
 // License: GPL-3.0-only
 
-use crate::{app_data::ServerAppData, quic::server::ServerConfig};
 use crate::bi_stream::BiStream;
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
+use crate::{app_data::ServerAppData, quic::server::ServerConfig};
 
 use anyhow::{anyhow, Result};
 use std::{sync::Arc, time::Instant};
 use tokio::net::TcpListener;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 /// Accepts TCP connections and bridges them to QUIC.
 #[instrument(skip(listener, config))]
@@ -18,6 +18,8 @@ pub async fn handle_tcp_listener(
     config: Arc<ServerConfig<ServerAppData>>,
     listener: TcpListener,
 ) -> Result<()> {
+    info!("TCP listening on {}", listener.local_addr()?);
+
     loop {
         // Accept new external TCP connection.
         let (tcp_stream, peer_addr) = match listener.accept().await {
@@ -54,10 +56,7 @@ pub async fn handle_tcp_listener(
             let start_time = Instant::now();
 
             if let Err(e) = forward_tcp_to_quic_stream(tcp_stream, quic_stream).await {
-                warn!(
-                    "TCP-to-QUIC stream terminated (id: {}): {:?}",
-                    stream_id, e
-                );
+                warn!("TCP-to-QUIC stream terminated (id: {}): {:?}", stream_id, e);
             } else {
                 debug!("TCP-to-QUIC stream (id {}) completed", stream_id);
             }

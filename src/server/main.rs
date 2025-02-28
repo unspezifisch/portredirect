@@ -10,11 +10,7 @@ use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::server::client_handler::handle_quic_client_connection;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::time::{sleep, Duration};
-use tracing::{error, info, instrument, span, Level};
+use tracing::{info, span, Level};
 
 /// Command-line arguments for the server side.
 #[derive(Parser, Debug)]
@@ -74,7 +70,8 @@ async fn main() -> Result<()> {
     info!("Configuration directory: {:?}", config_dir);
 
     // Parse QUIC server listener address.
-    let local_addr = resolve_socket_addr(&format!("{}:{}", args.local_host, args.local_port));
+    let local_addr = resolve_socket_addr(&format!("{}:{}", args.local_host, args.local_port))
+        .context("Failed to resolve local TCP bind address")?;
     let quic_addr = resolve_socket_addr(&format!(
         "{}:{}",
         args.quic_server_host, args.quic_server_port
@@ -82,7 +79,7 @@ async fn main() -> Result<()> {
     .context("Failed to resolve QUIC bind address")?;
 
     // Set up QUIC server configuration.
-    let app_data = Arc::new(ServerAppData::new(args.quic_psk, local_addr));
+    let app_data = ServerAppData::new(args.quic_psk, local_addr);
     info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(

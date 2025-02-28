@@ -37,13 +37,13 @@ async fn test_quic_end_to_end_minimal() {
     info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
-    let server_app_data = ServerAppData::new(test_psk_server);
+    let server_app_data = ServerAppData::new(test_psk_server, "0.0.0.0:0".parse().unwrap());
     let test_port = 65500; // HACK statically chosen port
     let server_config: server::ServerConfig<ServerAppData> =
         server::ServerConfig::create_default_config(
             config_dir.clone(),
             "localhost".to_string(),
-            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port),
+            SocketAddr::new(Ipv4Addr::LOCALHOST.into(), test_port), // QUIC socket
             None,
             server_app_data,
         );

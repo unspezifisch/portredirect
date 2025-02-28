@@ -41,7 +41,7 @@ async fn test_quic_end_to_end_multiple_clients() {
     let test_psk_client = SecretString::new(test_psk.into());
 
     // Create the server configuration.
-    let server_app_data = ServerAppData::new(test_psk_server);
+    let server_app_data = ServerAppData::new(test_psk_server, "0.0.0.0:0".parse().unwrap());
     let server_config: server::ServerConfig<ServerAppData> =
         server::ServerConfig::create_default_config(
             config_dir.clone(),

@@ -3,6 +3,10 @@
 // License: GPL-3.0-only
 
 use crate::bi_stream::BiStream;
+use crate::server::metrics_counter::{
+    QUIC_DATA_STREAM_OPENING_ERRORS, TCP_CONNECTIONS_ACCEPTED, TCP_CONNECTIONS_FAILED_ACCEPTING,
+    TCP_QUIC_CONNECTIONS_CLOSED_ERROR, TCP_QUIC_CONNECTIONS_CLOSED_GRACEFUL,
+};
 use crate::server::tcp_forwarder::forward_tcp_to_quic_stream;
 use crate::{app_data::ServerAppData, quic::server::ServerConfig};
 
@@ -34,16 +38,19 @@ pub async fn handle_tcp_listener(
                 let (mut tcp_stream, peer_addr) = match accept_result {
                     Ok(conn) => conn,
                     Err(e) => {
+                        TCP_CONNECTIONS_FAILED_ACCEPTING.inc();
                         error!("Failed to accept TCP connection: {}", e);
                         continue;
                     }
                 };
+                TCP_CONNECTIONS_ACCEPTED.inc();
                 debug!("Accepted TCP connection from {:?}", peer_addr);
 
                 // Open a bidirectional QUIC stream.
                 let (send, recv) = match quic_conn.open_bi().await {
                     Ok(stream) => stream,
                     Err(e) => {
+                        QUIC_DATA_STREAM_OPENING_ERRORS.inc();
                         error!("failed to open QUIC stream: {}", e);
                         if let Err(e) = tcp_stream.shutdown().await {
                             error!("Failed to shutdown TCP stream: {:?}", e);
@@ -61,8 +68,10 @@ pub async fn handle_tcp_listener(
                     let start_time = Instant::now();
 
                     if let Err(e) = forward_tcp_to_quic_stream(tcp_stream, quic_stream).await {
+                        TCP_QUIC_CONNECTIONS_CLOSED_ERROR.inc();
                         warn!("TCP-to-QUIC stream terminated (id: {}): {:?}", stream_id, e);
                     } else {
+                        TCP_QUIC_CONNECTIONS_CLOSED_GRACEFUL.inc();
                         debug!("TCP-to-QUIC stream (id {}) completed", stream_id);
                     }
 

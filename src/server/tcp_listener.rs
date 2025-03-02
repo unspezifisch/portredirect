@@ -18,7 +18,7 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, warn};
 
-#[instrument(skip(listener, _config, cancel_token))]
+#[instrument(skip(_config, quic_conn, listener, cancel_token))]
 pub async fn handle_tcp_listener(
     _config: Arc<ServerConfig<ServerAppData>>,
     quic_conn: quinn::Connection,

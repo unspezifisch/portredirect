@@ -88,7 +88,7 @@ pub async fn handle_quic_client_connection(
     // Run the control channel loop task.
     let control_channel_result = run_control_channel_loop(control_stream, cancel_token).await;
     
-    // Close the QUIC connection after the keepalive loop completes.
+    // Close the QUIC connection after the control channel finishes.
     debug!("Closing QUIC client connection from {}", quic_conn.remote_address());
     quic_conn.close(0u32.into(), b"OK normal shutdown");
     

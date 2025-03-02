@@ -8,7 +8,7 @@ use crate::protocol::keepalive::run_keepalive_client_loop;
 use crate::quic::client::ClientConfig;
 
 use super::auth::handle_quic_auth_client_side;
-use super::metrics_counter::*;
+use super::metrics_counters::*;
 use super::tcp_forwarder::forward_tcp_to_quic_stream;
 
 use anyhow::{Context, Result};

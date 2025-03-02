@@ -8,6 +8,7 @@ use portredirect::app_data::ServerAppData;
 use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::server::client_handler::handle_quic_client_connection;
+use portredirect::server::metrics_printer::print_metrics_loop;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
 use tracing::{info, span, Level};
@@ -46,6 +47,10 @@ struct Args {
     /// Pre-shared key for authentication over QUIC.
     #[clap(long)]
     quic_psk: SecretString,
+
+    /// Print metrics to stderr every second, if any value changes.
+    #[clap(long)]
+    print_metrics: bool,
 }
 
 /// Program entry point.
@@ -89,6 +94,14 @@ async fn main() -> Result<()> {
         None,
         app_data.clone(),
     );
+
+    // Spawn the metrics printer task.
+    if args.print_metrics {
+        info!("Starting metrics printer task");
+        tokio::spawn(async {
+            print_metrics_loop().await;
+        });
+    }
 
     // Start QUIC server.
     run_quic_server(quic_config, handle_quic_client_connection)

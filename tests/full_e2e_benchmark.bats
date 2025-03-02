@@ -44,9 +44,10 @@ setup() {
     [ -e .ci ] || cargo build --release
 
     # Start portredirect server in background
-    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_server \
+    ./target/release/portredirect_server \
         --local-host 127.0.0.1 --local-port 10001 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
+        --print-metrics \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
 
@@ -54,7 +55,7 @@ setup() {
     sleep 1
 
     # Start portredirect client in background
-    RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_client \
+    ./target/release/portredirect_client \
         --destination-host 127.0.0.1 --destination-port 5201 \
         --quic-remote-host 127.0.0.1 --quic-remote-port 4433 \
         --quic-remote-hostname-match localhost --quic-psk ilovespezifisch \

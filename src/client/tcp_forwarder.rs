@@ -3,7 +3,7 @@
 //
 // License: GPL-3.0-only
 
-use super::metrics_counter::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
+use super::metrics_counters::{BYTES_TRANSMITTED_A, BYTES_TRANSMITTED_B};
 
 use crate::app_data::ClientAppData;
 use crate::forward::forward_bidirectional;

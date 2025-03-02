@@ -3,7 +3,7 @@
 // License: GPL-3.0-only
 
 use crate::bi_stream::BiStream;
-use crate::server::metrics_counter::{
+use crate::server::metrics_counters::{
     QUIC_DATA_STREAM_OPENING_ERRORS, TCP_CONNECTIONS_ACCEPTED, TCP_CONNECTIONS_FAILED_ACCEPTING,
     TCP_QUIC_CONNECTIONS_CLOSED_ERROR, TCP_QUIC_CONNECTIONS_CLOSED_GRACEFUL,
 };

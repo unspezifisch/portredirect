@@ -16,6 +16,7 @@ authors = ["unspezifisch <unspezifisch@futurewidgets.eu>"]
 
 [dependencies]
 anyhow = "1.0.96"
+chrono = "0.4.40"
 clap = { version = "4.5.30", features = ["derive"] }
 dirs = "6.0.0"
 env_logger = "0.11.6"

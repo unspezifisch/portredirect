@@ -17,6 +17,7 @@ setup() {
     RUST_BACKTRACE=1 RUST_LOG=tracing=debug ./target/release/portredirect_server \
         --local-host 127.0.0.1 --local-port 10001 \
         --quic-server-host 127.0.0.1 --quic-server-port 4433 --quic-psk ilovespezifisch \
+        --print-metrics \
         >"$LOG_DIR/portredirect_server.log" 2>&1 &
     SERVER_PID=$!
 

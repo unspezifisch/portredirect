@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod client_handler;
-pub mod metrics_counter;
+pub mod metrics_counters;
+pub mod metrics_printer;
 pub mod tcp_forwarder;
 pub mod tcp_listener;

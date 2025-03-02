@@ -4,6 +4,7 @@
 
 use crate::protocol::keepalive::run_control_channel_loop;
 use crate::quic::server::ServerConfig;
+use crate::PortRedirectProtocol;
 use crate::{app_data::ServerAppData, server::tcp_listener::handle_tcp_listener};
 
 use super::auth::authenticate_quic_client;
@@ -11,6 +12,8 @@ use super::auth::authenticate_quic_client;
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
+use tokio::time::timeout;
 use tracing::{debug, info, instrument};
 
 // Handles one PR QUIC client connection.
@@ -25,15 +28,29 @@ pub async fn handle_quic_client_connection(
         quic_conn.remote_address()
     );
 
-    // First, ensure the client is authenticated.
-    // TODO add timeout for auth
-    let control_stream = match authenticate_quic_client(Arc::clone(&config), quic_conn.clone()).await {
-        Ok(stream) => stream,
-        Err(err) => {
-            // Terminate the connection upon authentication failure.
-            quic_conn.close(0u32.into(), b"failed authentication");
-            return Err(err).context(format!(
-                "failed to authenticate PR QUIC client from {}",
+    // 1. Authenticate client.
+    let control_stream = match timeout(
+        PortRedirectProtocol::AUTHENTICATION_TIMEOUT,
+        authenticate_quic_client(Arc::clone(&config), quic_conn.clone()),
+    )
+    .await
+    {
+        Ok(auth_result) => match auth_result {
+            Ok(stream) => stream, // Auth succeeded. Return the control stream.
+            Err(err) => {
+                // Auth failed, close the connection.
+                quic_conn.close(0u32.into(), b"ERR failed authentication");
+                return Err(err).context(format!(
+                    "failed to authenticate PR QUIC client from {}",
+                    quic_conn.remote_address()
+                ));
+            }
+        },
+        Err(_) => {
+            // Auth timed out, close the connection.
+            quic_conn.close(0u32.into(), b"ERR authentication timed out");
+            return Err(anyhow::anyhow!("authentication timed out")).context(format!(
+                "authentication timeout for PR QUIC client from {}",
                 quic_conn.remote_address()
             ));
         }
@@ -41,14 +58,17 @@ pub async fn handle_quic_client_connection(
 
     // TODO: handle config over control stream (eg. TCP port)
 
-    // Create the TCP listener.
+    // Create a cancellation token so the client can stop the TCP listener and end the QUIC connection.
+    let cancel_token = CancellationToken::new();
+
+    // 2. Create the TCP listener.
     let tcp_handle = if !config.app_data.clients_additional_listeners {
         let tcp_addr = config.app_data.default_tcp_listener;
         let listener = match TcpListener::bind(tcp_addr).await {
             Ok(listener) => listener,
             Err(err) => {
                 // Terminate the connection upon failure to bind the TCP listener.
-                quic_conn.close(0u32.into(), b"failed binding tcp listener");
+                quic_conn.close(0u32.into(), b"ERR failed binding tcp listener");
                 return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
             }
         };
@@ -56,26 +76,34 @@ pub async fn handle_quic_client_connection(
         // Spawn the TCP listener in its own task.
         let tcp_config = Arc::clone(&config);
         let quic_conn_clone = quic_conn.clone();
-        let tcp_handle =
-            tokio::spawn(async move { handle_tcp_listener(tcp_config, quic_conn_clone, listener).await });
+        let cancel_token_clone = cancel_token.clone();
+        let tcp_handle = tokio::spawn(async move {
+            handle_tcp_listener(tcp_config, quic_conn_clone, listener, cancel_token_clone).await
+        });
 
         tcp_handle
     } else {
-        info!("Additional TCP listeners not implemented");
+        info!("Additional TCP listeners not implemented yet"); // TODO
         tokio::spawn(async { Ok(()) })
     };
 
-    // Run the keepalive (PING/PONG) loop concurrently.
-    let control_channel_result = run_control_channel_loop(control_stream).await;
+    // Run the control channel loop task. The client can trigger the cancel_token.
+    let control_channel_result = run_control_channel_loop(control_stream, cancel_token).await;
+
+    debug!("Closing QUIC client connection from {}", quic_conn.remote_address());
 
     // Close the QUIC connection after the keepalive loop completes.
-    quic_conn.close(0u32.into(), b"normal shutdown");
+    quic_conn.close(0u32.into(), b"OK normal shutdown");
 
-    // TODO add possibility for client to initiate teardown of all TCP connections and the listener, over the control stream
-    // TODO close all TCP connections
-    // TODO tell TCP listener task to quit
+    debug!("Waiting for TCP listener task");
+
     // Await the TCP listener task.
     tcp_handle.await??;
+
+    debug!(
+        "End of QUIC client connection from {}",
+        quic_conn.remote_address()
+    );
 
     control_channel_result
 }

@@ -3,7 +3,8 @@ use crate::PortRedirectProtocol;
 use anyhow::{Error, Result};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::time::{interval, timeout, Duration};
-use tracing::{info, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info, warn};
 
 /// The amount of time to wait for a PONG response before timing out.
 const READ_TIMEOUT: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_TIMEOUT;
@@ -13,6 +14,8 @@ const KEEP_ALIVE_INTERVAL: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE
 const PING_MESSAGE: &[u8] = b"PING\n";
 /// The expected PONG response from the remote peer.
 const PONG_MESSAGE: &[u8] = b"PONG\n";
+/// Message from client to server that initiates connection teardown.
+const CONNECTION_END_MESSAGE: &[u8] = b"BYE\n";
 
 /// Runs the keepalive loop on the client side.
 ///
@@ -87,7 +90,7 @@ where
 /// incoming PING messages from the remote peer. When a PING is received,
 /// the server replies with a PONG. Any error (read/write, unexpected message,
 /// timeout, or connection close) causes the loop to exit gracefully.
-pub async fn run_control_channel_loop<T>(mut auth_stream: T) -> Result<()>
+pub async fn run_control_channel_loop<T>(mut auth_stream: T, cancel_token: CancellationToken) -> Result<()>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
@@ -96,22 +99,27 @@ where
         let mut buf = Vec::with_capacity(16);
 
         // Read until newline is encountered or connection is closed.
-        let read_result = timeout(KEEP_ALIVE_INTERVAL + READ_TIMEOUT, async {
-            let mut byte = [0; 1];
-            loop {
-                let n = auth_stream.read(&mut byte).await?;
-                if n == 0 {
-                    // Connection closed.
-                    break;
-                }
-                buf.push(byte[0]);
-                if byte[0] == b'\n' {
-                    break;
-                }
+        let read_result = tokio::select! {
+            _ = cancel_token.cancelled() => { // In the future, this might come from a Ctrl-C signal.
+                info!("Cancellation token triggered in control channel loop");
+                return Ok(());
             }
-            Ok::<(), Error>(())
-        })
-        .await;
+            res = timeout(KEEP_ALIVE_INTERVAL + READ_TIMEOUT, async {
+                let mut byte = [0; 1];
+                loop {
+                    let n = auth_stream.read(&mut byte).await?;
+                    if n == 0 {
+                        // Connection closed.
+                        break;
+                    }
+                    buf.push(byte[0]);
+                    if byte[0] == b'\n' {
+                        break;
+                    }
+                }
+                Ok::<(), Error>(())
+            }) => res,
+        };
 
         match read_result {
             Ok(Ok(())) => {
@@ -131,6 +139,10 @@ where
                         warn!("Failed to flush PONG: {}", e);
                         break;
                     }
+                } else if buf == CONNECTION_END_MESSAGE {
+                    info!("Received BYE, initiating client connection shutdown");
+                    cancel_token.cancel();
+                    break;
                 } else {
                     warn!("Unexpected message received: {:?}", buf);
                     break;
@@ -146,6 +158,9 @@ where
             }
         }
     }
+
+    debug!("Control channel loop ended, cancelling token");
+    cancel_token.cancel();
 
     Ok(())
 }

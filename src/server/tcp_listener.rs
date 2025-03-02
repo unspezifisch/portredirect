@@ -17,6 +17,7 @@ use tracing::{debug, error, info, instrument, warn};
 #[instrument(skip(listener, config))]
 pub async fn handle_tcp_listener(
     config: Arc<ServerConfig<ServerAppData>>,
+    quic_conn: quinn::Connection,
     listener: TcpListener,
 ) -> Result<()> {
     info!("TCP listening on {}", listener.local_addr()?);
@@ -32,23 +33,17 @@ pub async fn handle_tcp_listener(
         };
         debug!("Accepted TCP connection from {:?}", peer_addr);
 
-        // Try to get the active QUIC connection.
-        let quic_conn = match config.app_data.connection.as_ref() {
-            Some(conn) => conn,
-            None => {
-                error!("No active QUIC connection available to handle TCP traffic");
-                if let Err(e) = tcp_stream.shutdown().await { // TODO what's the worst case duration of this?
+        // Open a bidirectional QUIC stream.
+        let (send, recv) = match quic_conn.open_bi().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("failed to open QUIC stream: {}", e);
+                if let Err(e) = tcp_stream.shutdown().await {
                     error!("Failed to shutdown TCP stream: {:?}", e);
                 }
                 continue;
             }
         };
-
-        // Open a bidirectional QUIC stream.
-        let (send, recv) = quic_conn
-            .open_bi()
-            .await
-            .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
 
         let stream_id = recv.id(); // it's the same id for both directions
         let quic_stream = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());

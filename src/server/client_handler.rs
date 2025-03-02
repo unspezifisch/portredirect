@@ -15,28 +15,26 @@ use tracing::{debug, info, instrument};
 
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.
-#[instrument(skip(config, conn))]
+#[instrument(skip(config, quic_conn))]
 pub async fn handle_quic_client_connection(
     config: Arc<ServerConfig<ServerAppData>>,
-    conn: quinn::Connection,
+    quic_conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
         "Handling potential PR QUIC client connection from {}",
-        conn.remote_address()
+        quic_conn.remote_address()
     );
-
-    config.app_data.connection = Some(conn.clone()).into(); // TODO add Mutex
 
     // First, ensure the client is authenticated.
     // TODO add timeout for auth
-    let control_stream = match authenticate_quic_client(Arc::clone(&config), conn.clone()).await {
+    let control_stream = match authenticate_quic_client(Arc::clone(&config), quic_conn.clone()).await {
         Ok(stream) => stream,
         Err(err) => {
             // Terminate the connection upon authentication failure.
-            conn.close(0u32.into(), b"failed authentication");
+            quic_conn.close(0u32.into(), b"failed authentication");
             return Err(err).context(format!(
                 "failed to authenticate PR QUIC client from {}",
-                conn.remote_address()
+                quic_conn.remote_address()
             ));
         }
     };
@@ -50,15 +48,16 @@ pub async fn handle_quic_client_connection(
             Ok(listener) => listener,
             Err(err) => {
                 // Terminate the connection upon failure to bind the TCP listener.
-                conn.close(0u32.into(), b"failed binding tcp listener");
+                quic_conn.close(0u32.into(), b"failed binding tcp listener");
                 return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
             }
         };
 
         // Spawn the TCP listener in its own Tokio task.
         let tcp_config = Arc::clone(&config);
+        let quic_conn_clone = quic_conn.clone();
         let tcp_handle =
-            tokio::spawn(async move { handle_tcp_listener(tcp_config, listener).await });
+            tokio::spawn(async move { handle_tcp_listener(tcp_config, quic_conn_clone, listener).await });
 
         tcp_handle
     } else {
@@ -70,7 +69,7 @@ pub async fn handle_quic_client_connection(
     let control_channel_result = run_control_channel_loop(control_stream).await;
 
     // Close the QUIC connection after the keepalive loop completes.
-    conn.close(0u32.into(), b"normal shutdown");
+    quic_conn.close(0u32.into(), b"normal shutdown");
 
     // TODO add possibility for client to initiate teardown of all TCP connections and the listener, over the control stream
     // TODO close all TCP connections

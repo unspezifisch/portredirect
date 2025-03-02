@@ -21,7 +21,7 @@ pub struct ConnectionStats {
 /// Core function that runs the client logic.
 pub async fn run_client(
     app_config: ClientAppData,
-    quic_local_addr: SocketAddr,
+    tcp_local_addr: SocketAddr,
     quic_remote_addr: SocketAddr,
     metrics_enabled: bool,
 ) -> Result<()> {
@@ -62,7 +62,7 @@ pub async fn run_client(
     // Build the QUIC client configuration.
     let quic_client_config = ClientConfig::create_default_config(
         config_dir,
-        quic_local_addr,
+        tcp_local_addr,
         quic_remote_addr,
         // You can choose to pass through a hostname match if needed:
         None, // or Some(your_hostname) if desired.

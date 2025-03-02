@@ -108,13 +108,21 @@ openssl rand -hex 32
 
 PortRedirect secures QUIC tunnels using auto-generated certificates and a PSK-based challenge-response system. The client verifies the server’s certificate, while the server challenges the client to prove its identity with the shared PSK.
 
-## Running Tests
+## Development
+
+### Getting Started
+
+To get an overview of the codebase, use ![ARCHITECTURE.md](./ARCHITECTURE.md) as an entry point.
+
+### Tests
 
 Use the Makefile to run all tests:
 
 ```sh
 make test
 ```
+
+There are tests using Cargo, Python unittest, and BATS.
 
 ### BATS Tests
 

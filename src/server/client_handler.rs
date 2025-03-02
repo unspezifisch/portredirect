@@ -21,7 +21,7 @@ pub async fn handle_quic_client_connection(
     quic_conn: quinn::Connection,
 ) -> Result<()> {
     debug!(
-        "Handling potential PR QUIC client connection from {}",
+        "Handling QUIC client connection from {}",
         quic_conn.remote_address()
     );
 
@@ -53,7 +53,7 @@ pub async fn handle_quic_client_connection(
             }
         };
 
-        // Spawn the TCP listener in its own Tokio task.
+        // Spawn the TCP listener in its own task.
         let tcp_config = Arc::clone(&config);
         let quic_conn_clone = quic_conn.clone();
         let tcp_handle =
@@ -62,7 +62,7 @@ pub async fn handle_quic_client_connection(
         tcp_handle
     } else {
         info!("Additional TCP listeners not implemented");
-        tokio::task::spawn(async { Ok(()) })
+        tokio::spawn(async { Ok(()) })
     };
 
     // Run the keepalive (PING/PONG) loop concurrently.

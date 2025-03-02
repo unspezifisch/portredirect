@@ -10,9 +10,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 use tracing::{debug, info, instrument, warn};
 
-use crate::{
-    quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT},
-};
+use crate::quic::{configure_transport_config, ALPN_QUIC_PORTREDIRECT};
 
 /// Configuration for the QUIC server.
 ///
@@ -395,9 +393,19 @@ where
                 conn.remote_address(),
                 conn.remote_address_validated()
             );
-            let connection = conn
+            let connection = match conn
                 .await
-                .context("accepting incoming quic client connection")?;
+                .context("accepting incoming quic client connection")
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(
+                        "Failed to accept incoming QUIC connection from {}: {}",
+                        peer_info, e
+                    );
+                    continue;
+                }
+            };
 
             debug!(peer = %peer_info, "Accepting new QUIC client connection at {:?}", start.elapsed());
 

@@ -2,6 +2,7 @@
 //
 // License: GPL-3.0-only
 
+use crate::protocol::control::configure_quic_client;
 use crate::protocol::keepalive::run_control_channel_loop;
 use crate::quic::server::ServerConfig;
 use crate::PortRedirectProtocol;
@@ -12,8 +13,8 @@ use super::auth::authenticate_quic_client;
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio_util::sync::CancellationToken;
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, instrument};
 
 // Handles one PR QUIC client connection.
@@ -56,12 +57,49 @@ pub async fn handle_quic_client_connection(
         }
     };
 
-    // TODO: handle config over control stream (eg. TCP port)
+    // 2. Receive config over control stream
+    let requested_client_config = match timeout(
+        PortRedirectProtocol::CONFIGURATION_TIMEOUT,
+        configure_quic_client(control_stream),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(config) => config,
+            Err(err) => {
+                quic_conn.close(0u32.into(), b"ERR failed configuration");
+                return Err(err).context(format!(
+                    "failed to receive configuration from {}",
+                    quic_conn.remote_address()
+                ));
+            }
+        },
+        Err(_) => {
+            quic_conn.close(0u32.into(), b"ERR configuration timed out");
+            return Err(anyhow::anyhow!("configuration timed out")).context(format!(
+                "configuration timeout from {}",
+                quic_conn.remote_address()
+            ));
+        }
+    };
+
+    // Validate that the requested port is allowed.
+    if !config
+        .app_data
+        .local_bind_ports
+        .allows(requested_client_config.port)
+    {
+        quic_conn.close(0u32.into(), b"ERR port not allowed");
+        return Err(anyhow::anyhow!(
+            "requested port {} is not allowed",
+            requested_client_config.port
+        ));
+    }
 
     // Create a cancellation token so the client can stop the TCP listener and end the QUIC connection.
     let cancel_token = CancellationToken::new();
 
-    // 2. Create the TCP listener.
+    // 3. Create the TCP listener.
     let tcp_handle = if !config.app_data.clients_additional_listeners {
         let tcp_addr = config.app_data.default_tcp_listener;
         let listener = match TcpListener::bind(tcp_addr).await {
@@ -85,13 +123,16 @@ pub async fn handle_quic_client_connection(
         tokio::spawn(async { Ok(()) })
     };
 
-    // Run the control channel loop task.
+    // 4. Run the control channel loop task.
     let control_channel_result = run_control_channel_loop(control_stream, cancel_token).await;
-    
+
     // Close the QUIC connection after the control channel finishes.
-    debug!("Closing QUIC client connection from {}", quic_conn.remote_address());
+    debug!(
+        "Closing QUIC client connection from {}",
+        quic_conn.remote_address()
+    );
     quic_conn.close(0u32.into(), b"OK normal shutdown");
-    
+
     // Await the TCP listener task.
     debug!("Waiting for TCP listener task to finish");
     tcp_handle.await??;

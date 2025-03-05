@@ -38,6 +38,7 @@ impl PortRedirectProtocol {
     pub const CONNECTION_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
     pub const CONNECTION_KEEPALIVE_READ_TIMEOUT: Duration = Duration::from_secs(30);
     pub const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(10);
+    pub const CONFIGURATION_TIMEOUT: Duration = Duration::from_secs(10);
     pub const CHALLENGE_REQUEST_BUFFER_LENGTH: usize = 256;
 
     // TODO choose these values non-arbitrarily

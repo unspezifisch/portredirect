@@ -2,11 +2,12 @@
 //
 // License: GPL-3.0-only
 
+use secrecy::SecretString;
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use secrecy::SecretString;
+use crate::server::PortSpec;
 
 // Storage for application data for handler functions.
 #[derive(Clone, Debug)]
@@ -14,19 +15,23 @@ pub struct ServerAppData {
     // PSK for authenticating client connections.
     pub connection_auth_psk: SecretString,
 
-    // TCP listener to create when the client says it wants the default one.
-    pub default_tcp_listener: SocketAddr,
+    // IP to bind to the TCP listener to
+    pub local_bind_ip: String,
 
-    // Whether to allow clients to create additional TCP listeners.
-    pub clients_additional_listeners: bool,
+    // Allowed ports for clients to request.
+    pub local_bind_ports: PortSpec,
 }
 
 impl ServerAppData {
-    pub fn new(connection_auth_psk: SecretString, default_tcp_listener: SocketAddr) -> Self {
+    pub fn new(
+        connection_auth_psk: SecretString,
+        local_bind_ip: String,
+        local_bind_ports: PortSpec,
+    ) -> Self {
         ServerAppData {
             connection_auth_psk,
-            default_tcp_listener,
-            clients_additional_listeners: false,
+            local_bind_ip,
+            local_bind_ports,
         }
     }
 }

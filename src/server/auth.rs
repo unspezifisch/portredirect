@@ -21,19 +21,19 @@ pub async fn authenticate_quic_client(
 ) -> Result<BiStream<Compat<quinn::RecvStream>, Compat<quinn::SendStream>>> {
     debug!("Authenticating PR QUIC client");
 
-    // An unknown client just connected, they need to authenticate or get kicked.
+    // Open control channel, which will stay open for the lifetime of the connection.
     let (send, recv) = conn
         .open_bi()
         .await
         .map_err(|e| anyhow!("failed to open AUTH stream: {}", e))?;
     let stream_id = recv.id();
-    debug!("opened bidi channel for AUTH with stream id {}", stream_id);
+    debug!("opened control channel with stream id {}", stream_id);
 
     // Convert the futures-based Quinn streams into Tokio-compatible streams.
-    let mut bi_stream = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
+    let mut control_channel = BiStream::new(recv.compat(), send.compat_write(), stream_id.to_string());
 
     match server_authenticate(
-        &mut bi_stream,
+        &mut control_channel,
         config.app_data.connection_auth_psk.to_owned(),
         &SystemTimeProvider,
     )
@@ -48,5 +48,5 @@ pub async fn authenticate_quic_client(
         }
     }
 
-    Ok(bi_stream)
+    Ok(control_channel)
 }

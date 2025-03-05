@@ -9,6 +9,7 @@ use portredirect::get_config_dir;
 use portredirect::quic::server::{run_quic_server, ServerConfig};
 use portredirect::server::client_handler::handle_quic_client_connection;
 use portredirect::server::metrics_printer::print_metrics_loop;
+use portredirect::server::PortSpec;
 use secrecy::SecretString;
 use std::net::{SocketAddr, ToSocketAddrs};
 use tracing::{info, span, Level};
@@ -20,17 +21,17 @@ struct Args {
     #[clap(long)]
     config_dir: Option<String>,
 
-    /// TCP listener host for external connections.
+    /// TCP listener host for external connections
     #[clap(long)]
     local_host: String,
 
-    /// TCP listener port for external connections.
+    /// TCP listener port for external connections (deprecated, use --allowed-client-ports instead).
     #[clap(long)]
-    local_port: u16,
+    local_port: Option<u16>,
 
-    /// Allow clients to create additional TCP listeners for external connections.
-    #[clap(long)]
-    clients_additional_listeners: bool,
+    /// Allowed ports for clients to request, e.g., "80,443,1000-2000"
+    #[clap(long, value_delimiter = ',')]
+    allowed_client_ports: Option<Vec<PortSpec>>,
 
     /// QUIC server listener host.
     #[clap(long, default_value = "127.0.0.1")]
@@ -74,9 +75,18 @@ async fn main() -> Result<()> {
         get_config_dir(args.config_dir).context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
 
+    // Parse local TCP listener address(es).
+    if let Some(local_port) = args.local_port {
+        info!("--local-port is deprecated; use --allowed-client-ports instead");
+        if args.allowed_client_ports.is_none() {
+            args.allowed_client_ports = Some(vec![PortSpec::Single(local_port)]);
+        }
+    }
+    if args.allowed_client_ports.is_none() {
+        return Err(anyhow!("--allowed-client-ports is required"));
+    }
+
     // Parse QUIC server listener address.
-    let local_addr = resolve_socket_addr(&format!("{}:{}", args.local_host, args.local_port))
-        .context("Failed to resolve local TCP bind address")?;
     let quic_addr = resolve_socket_addr(&format!(
         "{}:{}",
         args.quic_server_host, args.quic_server_port
@@ -84,7 +94,7 @@ async fn main() -> Result<()> {
     .context("Failed to resolve QUIC bind address")?;
 
     // Set up QUIC server configuration.
-    let app_data = ServerAppData::new(args.quic_psk, local_addr);
+    let app_data = ServerAppData::new(args.quic_psk, args.local_host, args.allowed_client_ports);
     info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(

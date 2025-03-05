@@ -14,6 +14,8 @@
 //
 // License: GPL-3.0-only
 
+use crate::PortRedirectProtocol;
+
 use super::utils::ElapsedMinutes;
 use super::utils::TimeProvider;
 
@@ -22,9 +24,6 @@ use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use sha2::{Digest, Sha512};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-/// Maximum allowed length for the challenge message.
-const CHALLENGE_MAX_LEN: usize = 256;
 
 /// Server-side authentication: send challenge, receive and verify the client’s response.
 pub async fn server_authenticate<S>(
@@ -46,7 +45,7 @@ where
     );
     let request = format!("WHO THE HECK ARE YOU?\n{}\n", challenge);
 
-    if request.len() > CHALLENGE_MAX_LEN {
+    if request.len() > PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH {
         return Err(anyhow!("Challenge string exceeds maximum length"));
     }
 
@@ -83,7 +82,7 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     // 1. Read the challenge message.
-    let mut buf = vec![0u8; CHALLENGE_MAX_LEN];
+    let mut buf = vec![0u8; PortRedirectProtocol::CHALLENGE_REQUEST_BUFFER_LENGTH];
     let n = stream.read(&mut buf).await?;
     let message = std::str::from_utf8(&buf[..n])?;
     let mut lines = message.lines();

@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 /// The amount of time to wait for a PONG response before timing out.
-const READ_TIMEOUT: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_TIMEOUT;
+const READ_TIMEOUT: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_READ_TIMEOUT;
 /// How often a PING is sent over the connection.
 const KEEP_ALIVE_INTERVAL: Duration = PortRedirectProtocol::CONNECTION_KEEPALIVE_INTERVAL;
 /// The PING message sent to the remote peer.

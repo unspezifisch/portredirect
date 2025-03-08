@@ -2,6 +2,7 @@
 
 use portredirect::app_data::{ClientAppData, ServerAppData};
 use portredirect::quic::{client, server};
+use portredirect::server::PortSpec;
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{
@@ -41,7 +42,8 @@ async fn test_quic_end_to_end_multiple_clients() {
     let test_psk_client = SecretString::new(test_psk.into());
 
     // Create the server configuration.
-    let server_app_data = ServerAppData::new(test_psk_server, "0.0.0.0:0".parse().unwrap());
+    let server_app_data =
+        ServerAppData::new(test_psk_server, "0.0.0.0".into(), vec![PortSpec::Single(0)]);
     let server_config: server::ServerConfig<ServerAppData> =
         server::ServerConfig::create_default_config(
             config_dir.clone(),

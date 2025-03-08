@@ -3,6 +3,7 @@
 use anyhow::Error;
 use portredirect::app_data::{ClientAppData, ServerAppData};
 use portredirect::quic::{client, server};
+use portredirect::server::PortSpec;
 use secrecy::SecretString;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -37,7 +38,7 @@ async fn test_quic_end_to_end_minimal() {
     info!("Using config directory: {:?}", config_dir);
 
     // Define server and client configuration
-    let server_app_data = ServerAppData::new(test_psk_server, "0.0.0.0:0".parse().unwrap());
+    let server_app_data = ServerAppData::new(test_psk_server, "0.0.0.0".into(), vec![PortSpec::Single(0)]);
     let test_port = 65500; // HACK statically chosen port
     let server_config: server::ServerConfig<ServerAppData> =
         server::ServerConfig::create_default_config(

@@ -54,3 +54,31 @@ impl PortSpec {
         }
     }
 }
+
+/// Trait to check if a collection of PortSpec allows a given port.
+pub trait AllowedPorts {
+    /// Returns true if any `PortSpec` in the collection allows the given port.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use portredirect::server::{PortSpec, AllowedPorts};
+    ///
+    /// let port = 12345;
+    /// let allowed_ports: Vec<PortSpec> = vec![
+    ///     PortSpec::Single(80),
+    ///     PortSpec::Range(8000, 9000),
+    ///     PortSpec::Single(12345),
+    /// ];
+    ///
+    /// assert!(allowed_ports.allows(port));
+    /// println!("Port {} is allowed.", port);
+    /// ```
+    fn allows(&self, port: u16) -> bool;
+}
+
+impl AllowedPorts for [PortSpec] {
+    fn allows(&self, port: u16) -> bool {
+        self.iter().any(|spec| spec.allows(port))
+    }
+}

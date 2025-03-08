@@ -76,13 +76,15 @@ async fn main() -> Result<()> {
     info!("Configuration directory: {:?}", config_dir);
 
     // Parse local TCP listener address(es).
-    if let Some(local_port) = args.local_port {
-        info!("--local-port is deprecated; use --allowed-client-ports instead");
-        if args.allowed_client_ports.is_none() {
-            args.allowed_client_ports = Some(vec![PortSpec::Single(local_port)]);
+    let allowed_client_ports = {
+        let mut allowed_client_ports = args.allowed_client_ports.unwrap_or_default();
+        if let Some(local_port) = args.local_port {
+            info!("--local-port is deprecated; use --allowed-client-ports instead");
+            allowed_client_ports.append(&mut vec![PortSpec::Single(local_port)]);
         }
-    }
-    if args.allowed_client_ports.is_none() {
+        allowed_client_ports
+    };
+    if allowed_client_ports.is_empty() {
         return Err(anyhow!("--allowed-client-ports is required"));
     }
 
@@ -94,7 +96,7 @@ async fn main() -> Result<()> {
     .context("Failed to resolve QUIC bind address")?;
 
     // Set up QUIC server configuration.
-    let app_data = ServerAppData::new(args.quic_psk, args.local_host, args.allowed_client_ports);
+    let app_data = ServerAppData::new(args.quic_psk, args.local_host, allowed_client_ports);
     info!("QUIC will listen on {}", quic_addr);
 
     let quic_config = ServerConfig::create_default_config(

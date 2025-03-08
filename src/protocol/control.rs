@@ -23,10 +23,9 @@ pub struct RequestedClientConfiguration {
 /// - `xx` is a 2-byte big‑endian encoded u16 port number.
 ///
 /// The function checks that the requested port is allowed by the server's configuration.
-/// It returns a `RequestedClientConfiguration` on success.
 pub async fn configure_quic_client<R, W>(
     mut control_channel: BiStream<R, W>,
-) -> Result<RequestedClientConfiguration>
+) -> Result<(RequestedClientConfiguration, BiStream<R, W>)>
 where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
@@ -58,5 +57,5 @@ where
         .context("failed to read port bytes from client")?;
     let port = u16::from_be_bytes(port_buf);
 
-    Ok(RequestedClientConfiguration { port })
+    Ok((RequestedClientConfiguration { port }, control_channel))
 }

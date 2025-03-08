@@ -5,6 +5,7 @@
 use crate::protocol::control::configure_quic_client;
 use crate::protocol::keepalive::run_control_channel_loop;
 use crate::quic::server::ServerConfig;
+use crate::server::AllowedPorts;
 use crate::PortRedirectProtocol;
 use crate::{app_data::ServerAppData, server::tcp_listener::handle_tcp_listener};
 
@@ -58,14 +59,14 @@ pub async fn handle_quic_client_connection(
     };
 
     // 2. Receive config over control stream
-    let requested_client_config = match timeout(
+    let (requested_client_config, control_stream) = match timeout(
         PortRedirectProtocol::CONFIGURATION_TIMEOUT,
         configure_quic_client(control_stream),
     )
     .await
     {
         Ok(result) => match result {
-            Ok(config) => config,
+            Ok(result) => result,
             Err(err) => {
                 quic_conn.close(0u32.into(), b"ERR failed configuration");
                 return Err(err).context(format!(
@@ -100,28 +101,23 @@ pub async fn handle_quic_client_connection(
     let cancel_token = CancellationToken::new();
 
     // 3. Create the TCP listener.
-    let tcp_handle = if !config.app_data.clients_additional_listeners {
-        let tcp_addr = config.app_data.default_tcp_listener;
-        let listener = match TcpListener::bind(tcp_addr).await {
-            Ok(listener) => listener,
-            Err(err) => {
-                // Terminate the connection upon failure to bind the TCP listener.
-                quic_conn.close(0u32.into(), b"ERR failed binding tcp listener");
-                return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
-            }
-        };
-
-        // Spawn the TCP listener in its own task.
-        let tcp_config = Arc::clone(&config);
-        let quic_conn_clone = quic_conn.clone();
-        let cancel_token_clone = cancel_token.clone();
-        tokio::spawn(async move {
-            handle_tcp_listener(tcp_config, quic_conn_clone, listener, cancel_token_clone).await
-        })
-    } else {
-        info!("Additional TCP listeners not implemented yet"); // TODO
-        tokio::spawn(async { Ok(()) })
+    let tcp_addr = config.app_data.local_bind_ip.clone() + ":" + &requested_client_config.port.to_string();
+    let listener = match TcpListener::bind(tcp_addr.clone()).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            // Terminate the connection upon failure to bind the TCP listener.
+            quic_conn.close(0u32.into(), b"ERR failed binding tcp listener");
+            return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
+        }
     };
+
+    // Spawn the TCP listener in its own task.
+    let tcp_config = Arc::clone(&config);
+    let quic_conn_clone = quic_conn.clone();
+    let cancel_token_clone = cancel_token.clone();
+    let tcp_handle = tokio::spawn(async move {
+        handle_tcp_listener(tcp_config, quic_conn_clone, listener, cancel_token_clone).await
+    });
 
     // 4. Run the control channel loop task.
     let control_channel_result = run_control_channel_loop(control_stream, cancel_token).await;

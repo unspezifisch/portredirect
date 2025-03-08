@@ -19,14 +19,14 @@ pub struct ServerAppData {
     pub local_bind_ip: String,
 
     // Allowed ports for clients to request.
-    pub local_bind_ports: PortSpec,
+    pub local_bind_ports: Vec<PortSpec>,
 }
 
 impl ServerAppData {
     pub fn new(
         connection_auth_psk: SecretString,
         local_bind_ip: String,
-        local_bind_ports: PortSpec,
+        local_bind_ports: Vec<PortSpec>,
     ) -> Self {
         ServerAppData {
             connection_auth_psk,

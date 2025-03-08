@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 // Handles one PR QUIC client connection.
 // Called by run_quic_server.

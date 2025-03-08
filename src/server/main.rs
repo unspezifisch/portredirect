@@ -75,11 +75,12 @@ async fn main() -> Result<()> {
         get_config_dir(args.config_dir).context("Failed to get configuration directory")?;
     info!("Configuration directory: {:?}", config_dir);
 
-    // Parse local TCP listener address(es).
+    // Parse local TCP listener address(es) #TODO remove legacy handler.
     let allowed_client_ports = {
         let mut allowed_client_ports = args.allowed_client_ports.unwrap_or_default();
         if let Some(local_port) = args.local_port {
             info!("--local-port is deprecated; use --allowed-client-ports instead");
+            // add given port to allowed ports
             allowed_client_ports.append(&mut vec![PortSpec::Single(local_port)]);
         }
         allowed_client_ports

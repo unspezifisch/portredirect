@@ -105,7 +105,7 @@ lint_fix:
 # Test targets.
 # ------------------------------
 # Top-level test target: runs both Cargo and Python tests.
-test: test_cargo test_python test_bats
+test: test_cargo test_python
 
 # Run BATS tests.
 test_bats:

@@ -101,23 +101,26 @@ pub async fn handle_quic_client_connection(
     let cancel_token = CancellationToken::new();
 
     // 3. Create the TCP listener.
-    let tcp_addr = config.app_data.local_bind_ip.clone() + ":" + &requested_client_config.port.to_string();
-    let listener = match TcpListener::bind(tcp_addr.clone()).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            // Terminate the connection upon failure to bind the TCP listener.
-            quic_conn.close(0u32.into(), b"ERR failed binding tcp listener");
-            return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
-        }
-    };
+    let tcp_handle = {
+        let tcp_addr =
+            config.app_data.local_bind_ip.clone() + ":" + &requested_client_config.port.to_string();
+        let listener = match TcpListener::bind(tcp_addr.clone()).await {
+            Ok(listener) => listener,
+            Err(err) => {
+                // Terminate the connection upon failure to bind the TCP listener.
+                quic_conn.close(0u32.into(), b"ERR failed binding tcp listener");
+                return Err(err).context(format!("Failed to bind TCP listener to {}", tcp_addr));
+            }
+        };
 
-    // Spawn the TCP listener in its own task.
-    let tcp_config = Arc::clone(&config);
-    let quic_conn_clone = quic_conn.clone();
-    let cancel_token_clone = cancel_token.clone();
-    let tcp_handle = tokio::spawn(async move {
-        handle_tcp_listener(tcp_config, quic_conn_clone, listener, cancel_token_clone).await
-    });
+        // Spawn the TCP listener in its own task.
+        let tcp_config = Arc::clone(&config);
+        let quic_conn_clone = quic_conn.clone();
+        let cancel_token_clone = cancel_token.clone();
+        tokio::spawn(async move {
+            handle_tcp_listener(tcp_config, quic_conn_clone, listener, cancel_token_clone).await
+        })
+    };
 
     // 4. Run the control channel loop task.
     let control_channel_result = run_control_channel_loop(control_stream, cancel_token).await;

@@ -39,7 +39,7 @@ tracing-subscriber = "0.3.19"
 warp = "0.3.7"
 
 [dev-dependencies]
-tempfile = "3.18.0"
+tempfile = "3.19.0"
 
 [[bin]]
 name = "portredirect_server"
